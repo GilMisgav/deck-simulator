@@ -1,0 +1,3171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deck Room — Blackjack Deck Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0F0E; --panel:#121917; --panel2:#182220; --inset:#0D1311;
+    --line:#22302B; --line2:#2E4038;
+    --felt:#175447; --felt-deep:#0E3A31;
+    --gold:#C9A55C; --gold-dim:#8a6f3a; --gold-soft:rgba(201,165,92,.14);
+    --cream:#EFE6D0; --card-edge:#d8cbae; --ink:#1B1A16;
+    --win:#5BB98A; --lose:#C75950; --push:#98A6A0;
+    --text:#E4E9E5; --muted:#8B9A93;
+    --serif:'Fraunces',Georgia,serif;
+    --sans:'Archivo',system-ui,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+    -webkit-font-smoothing:antialiased}
+  body{padding:0 0 80px;position:relative}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(900px 480px at 85% -10%, rgba(23,84,71,.28), transparent 60%),
+      radial-gradient(700px 420px at -10% 8%, rgba(201,165,92,.07), transparent 55%);}
+  body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.05;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 22px;position:relative;z-index:1}
+
+  /* ── header ── */
+  header{padding:30px 0 0}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.34em;text-transform:uppercase;
+    color:var(--gold);margin:0 0 6px}
+  h1{font-family:var(--serif);font-weight:600;font-style:italic;letter-spacing:-.01em;
+    font-size:44px;margin:0;line-height:1}
+  h1 .fl{color:var(--gold)}
+  .headrow{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;flex-wrap:wrap}
+  .rulechips{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:6px}
+  .rulechip{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 11px;background:var(--panel)}
+  .rulechip b{color:var(--gold);font-weight:600}
+
+  /* ── tabs ── */
+  nav{display:flex;gap:2px;margin:26px 0 26px;border-bottom:1px solid var(--line);position:sticky;
+    top:0;background:var(--bg);z-index:20;padding-top:8px}
+  nav button{appearance:none;background:none;border:none;cursor:pointer;color:var(--muted);
+    font-family:var(--sans);font-weight:600;font-size:14px;letter-spacing:.02em;
+    padding:12px 18px 14px;position:relative;transition:color .15s}
+  nav button:hover{color:var(--text)}
+  nav button.on{color:var(--gold)}
+  nav button.on::after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:2px;
+    background:var(--gold)}
+  nav .spacer{flex:1}
+  .filterpill{align-self:center;font-family:var(--mono);font-size:11px;color:var(--bg);
+    background:var(--gold);border-radius:999px;padding:4px 12px;font-weight:600;display:none}
+
+  /* ── stat cards ── */
+  .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px 15px 12px;position:relative;overflow:hidden}
+  .stat::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:var(--line2)}
+  .stat.gold::before{background:var(--gold)}
+  .stat.win::before{background:var(--win)} .stat.lose::before{background:var(--lose)}
+  .stat.push::before{background:var(--push)}
+  .stat .k{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.14em;
+    text-transform:uppercase}
+  .stat .v{font-family:var(--serif);font-weight:600;font-size:30px;margin-top:4px;line-height:1.05;
+    font-variant-numeric:tabular-nums}
+  .stat .s{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:4px}
+  .stat.gold .v{color:var(--gold)} .stat.win .v{color:var(--win)} .stat.lose .v{color:var(--lose)}
+
+  h2.sec{font-family:var(--serif);font-style:italic;font-weight:500;font-size:21px;color:var(--text);
+    margin:34px 0 4px}
+  p.secnote{margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+
+  /* ── charts ── */
+  .charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+  .chart{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .chart h3{margin:0 0 12px;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted);font-weight:500}
+  .bars{display:flex;align-items:flex-end;gap:3px;height:96px}
+  .bar{flex:1;background:linear-gradient(180deg,var(--gold),var(--gold-dim));border-radius:2px 2px 0 0;
+    min-height:2px;position:relative;opacity:.9;transition:opacity .1s}
+  .bar:hover{opacity:1;box-shadow:0 0 0 1px var(--gold)}
+  .bar-x{display:flex;gap:3px;margin-top:6px}
+  .bar-x span{flex:1;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted)}
+
+  /* ── tables ── */
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);font-weight:500;background:var(--bg);box-shadow:0 1px 0 var(--line);
+    user-select:none}
+  /* sticky header ONLY on the big database table — other tables scroll normally */
+  #deckTable th{position:sticky;top:var(--navh,53px);cursor:pointer;z-index:5}
+  #deckTable th:hover{color:var(--gold)}
+  /* below the breakpoint the wrapper scrolls horizontally, which traps sticky —
+     turn it off so the header can never float mid-table */
+  @media (max-width:1119px){ #deckTable th{position:static} }
+  #tierTable th[title],#genTable th[title]{cursor:help}
+  th .arr{color:var(--gold)}
+  td{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--text)}
+  tr.datarow{cursor:pointer;transition:background .08s}
+  tr.datarow:hover{background:var(--gold-soft)}
+  td.id{color:var(--gold);font-weight:500}
+  td.dim,span.dim{color:var(--muted)}
+  .tiertag{display:inline-block;min-width:24px;text-align:center;border:1px solid var(--gold-dim);
+    color:var(--gold);border-radius:5px;padding:1px 5px;font-size:11px}
+  .playbtn{font-family:var(--sans);font-weight:600;font-size:11px;color:var(--bg);background:var(--gold);
+    border:none;border-radius:6px;padding:4px 10px;cursor:pointer}
+  .playbtn:hover{filter:brightness(1.1)}
+
+  /* ── filters ── */
+  .filterbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;
+    margin-bottom:16px}
+  .filterhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px;flex-wrap:wrap}
+  .filterhead h3{margin:0;font-family:var(--serif);font-style:italic;font-size:17px;font-weight:500}
+  .fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px 14px}
+  .frow label{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+  .frow .pair{display:flex;gap:6px;align-items:center}
+  .frow .pair span{color:var(--muted);font-size:11px}
+  input[type=number],input[type=text]{background:var(--inset);border:1px solid var(--line);
+    color:var(--text);padding:7px 9px;border-radius:7px;font-family:var(--mono);font-size:12px;
+    width:100%;min-width:0}
+  input:focus{outline:none;border-color:var(--gold)}
+  button.act{font-family:var(--sans);font-weight:600;font-size:12.5px;cursor:pointer;border-radius:8px;
+    padding:9px 16px;border:1px solid var(--line);background:var(--panel2);color:var(--text);transition:.12s}
+  button.act:hover:not(:disabled){border-color:var(--gold);color:#fff}
+  button.act:disabled{opacity:.35;cursor:not-allowed}
+  button.act.primary{background:var(--gold);border-color:var(--gold);color:#141006}
+  button.act.primary:hover:not(:disabled){filter:brightness(1.08);color:#141006}
+  .exportrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .exportrow label{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;cursor:pointer}
+  .matchcount{font-family:var(--mono);font-size:12px;color:var(--gold)}
+  .pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin:14px 0;
+    font-family:var(--mono);font-size:12px;color:var(--muted)}
+
+  /* ── play view ── */
+  .deckbar{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:14px;font-size:13px;
+    color:var(--muted)}
+  .deckbar b{font-family:var(--mono);color:var(--text);font-weight:500}
+  .deckbar .idb{color:var(--gold)}
+  .lookup{display:flex;gap:8px;align-items:center;margin-left:auto}
+  .lookup input{width:200px}
+  .tape{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:9px;
+    padding:7px;margin-bottom:5px}
+  .cell{flex:1 1 0;min-width:0;height:32px;border-radius:3px;display:flex;align-items:center;
+    justify-content:center;font-family:var(--mono);font-size:9.5px;font-weight:600;
+    background:#101614;color:#3c4844}
+  .cell.used{background:#232e2a;color:#5d6b65}
+  .cell.next{background:var(--gold);color:#141006;box-shadow:0 0 0 2px var(--gold)}
+  .tape-legend{display:flex;gap:16px;font-size:10.5px;font-family:var(--mono);color:var(--muted);
+    margin:0 2px 16px}
+  .tape-legend i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:5px;
+    vertical-align:-1px}
+
+  .felt{background:radial-gradient(130% 130% at 50% -20%,var(--felt) 0%,var(--felt-deep) 100%);
+    border:1px solid #0b2b24;border-radius:18px;padding:24px;min-height:320px;
+    box-shadow:inset 0 2px 40px rgba(0,0,0,.4), 0 12px 34px rgba(0,0,0,.3);position:relative}
+  .felt::before{content:"DECK ROOM · BOOK RULES S17";position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%) ;font-family:var(--serif);font-style:italic;font-size:26px;
+    color:rgba(255,255,255,.05);letter-spacing:.2em;pointer-events:none;white-space:nowrap}
+  .side-label{font-family:var(--mono);font-size:10px;letter-spacing:.26em;text-transform:uppercase;
+    color:rgba(255,255,255,.5);margin-bottom:8px}
+  .row{margin-bottom:20px;position:relative}
+  .hands{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start;min-height:96px}
+  .hand{padding:8px;border-radius:10px;border:1px solid transparent}
+  .hand.active{border-color:var(--gold);background:rgba(201,165,92,.1)}
+  .cards{display:flex}
+  .pcard{width:58px;height:82px;background:linear-gradient(160deg,#F7EFDC,#EDE2C8);
+    border:1px solid var(--card-edge);border-radius:8px;margin-left:-15px;
+    box-shadow:0 3px 10px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;
+    position:relative;color:var(--ink);font-family:var(--serif);font-weight:700;font-size:26px}
+  .pcard:first-child{margin-left:0}
+  .pcard .corner{position:absolute;top:5px;left:7px;font-size:11px;font-weight:700;font-family:var(--mono)}
+  .pcard .corner.br{top:auto;left:auto;bottom:5px;right:7px;transform:rotate(180deg)}
+  .pcard.back{background:repeating-linear-gradient(45deg,#134a40,#134a40 6px,#0e3a32 6px,#0e3a32 12px);
+    border-color:#0c2f28}
+  .pcard.back .corner,.pcard.back .big{display:none}
+  .pcard.dealt{animation:deal .2s ease-out}
+  @keyframes deal{from{transform:translateY(-14px) rotate(-5deg);opacity:0}to{transform:none;opacity:1}}
+  .htotal{margin-top:8px;font-family:var(--mono);font-size:13px;color:#fff}
+  .tag{margin-left:8px;padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;
+    font-family:var(--sans)}
+  .tag.bj{background:var(--gold);color:#141006}
+  .tag.bust,.tag.lose{background:var(--lose);color:#fff}
+  .tag.win{background:var(--win);color:#06231a}
+  .tag.push{background:var(--push);color:#141414}
+  .tag.soft{background:rgba(255,255,255,.16);color:#fff}
+  .tag.x2{background:rgba(201,165,92,.25);color:var(--gold)}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;align-items:center}
+  .hint{margin-left:auto;font-size:12px;color:rgba(255,255,255,.62);font-family:var(--mono)}
+  .hint b{color:var(--gold)}
+  .msg{min-height:24px;margin:14px 2px 0;font-size:16px;font-weight:600;font-family:var(--serif);
+    font-style:italic}
+  .statusbar{display:flex;gap:22px;align-items:center;font-family:var(--mono);font-size:11px;
+    letter-spacing:.1em;color:rgba(255,255,255,.55);margin-bottom:18px;flex-wrap:wrap}
+  .statusbar b{color:#fff;font-size:14px;font-weight:600;margin-left:4px}
+  .lasthand{background:var(--lose);color:#fff;border-radius:5px;padding:3px 10px;
+    font-weight:700;letter-spacing:.18em;animation:pulse 1.2s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.55}}
+  .chips{display:flex;gap:10px;align-items:center}
+  .chipbtn{width:54px;height:54px;border-radius:50%;border:3px dashed rgba(255,255,255,.55);
+    background:radial-gradient(circle at 35% 30%,#e8c678,#a37e33);color:#1a1400;
+    font-weight:700;font-family:var(--mono);font-size:12.5px;cursor:pointer;
+    box-shadow:0 4px 10px rgba(0,0,0,.45);transition:transform .1s}
+  .chipbtn:hover:not(:disabled){transform:translateY(-3px)}
+  .chipbtn:disabled{opacity:.3;cursor:not-allowed}
+  .kbd-note{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:10px}
+  .kbd-note b{color:var(--text);background:var(--panel2);border:1px solid var(--line);
+    border-radius:4px;padding:1px 5px;font-weight:500}
+
+  .afterpanel{margin-top:22px;background:var(--panel);border:1px solid var(--gold-dim);
+    border-radius:14px;padding:18px 20px;display:none}
+  .afterpanel h3{margin:0 0 4px;font-family:var(--serif);font-style:italic;font-size:20px;
+    color:var(--gold);font-weight:600}
+  .afterpanel p{margin:0 0 12px;font-size:12.5px;color:var(--muted)}
+  .afterpanel table{max-width:640px}
+  .afterpanel th{position:static;cursor:default}
+  .delta-up{color:var(--win)} .delta-down{color:var(--lose)}
+
+  .sessgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:9px;margin-top:18px}
+  .sess{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .sess .k{font-family:var(--mono);font-size:9.5px;color:var(--muted);letter-spacing:.08em;
+    text-transform:uppercase}
+  .sess .v{font-family:var(--serif);font-weight:600;font-size:20px;margin-top:2px}
+  .sess.accent .v{color:var(--gold)}
+  .err{color:var(--lose);font-size:12px;font-family:var(--mono);min-height:16px;margin-top:6px}
+  .tablewrap{overflow-x:auto}
+  @media (min-width:1120px){ .tablewrap{overflow:visible} } /* sticky th needs no scroll ancestor */
+
+  /* selection + generator */
+  th.chk,td.chk{width:30px;text-align:center;cursor:default}
+  input[type=checkbox]{accent-color:var(--gold);width:14px;height:14px;cursor:pointer}
+  tr.datarow.sel{background:rgba(201,165,92,.09)}
+  tr.datarow.sel:hover{background:rgba(201,165,92,.15)}
+  .progress{flex:1;min-width:160px;height:6px;background:var(--inset);border:1px solid var(--line);
+    border-radius:4px;overflow:hidden}
+  .progress i{display:block;height:100%;background:var(--gold);width:0%;transition:width .2s}
+  .genstat{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .genstat b{color:var(--gold)}
+  .refval{font-family:var(--mono);font-size:12px;color:var(--gold);min-width:26px;
+    display:inline-block;text-align:right}
+
+  /* generator KPI table */
+  .kpitable{max-width:640px;border-collapse:collapse}
+  .kpitable th{position:static;cursor:default;box-shadow:none;padding:6px 10px}
+  .kpitable td{padding:5px 10px;border-bottom:1px solid var(--line)}
+  .kpitable td.kn{text-align:left;font-family:var(--sans);font-size:12.5px;color:var(--text)}
+  .kpitable input[type=number]{width:76px;padding:5px 8px}
+  .kpitable tr.off td{opacity:.42}
+  .kpitable tr.off td:first-child{opacity:1}
+
+  /* select-all banner */
+  .selbanner{background:var(--gold-soft);border:1px solid var(--gold-dim);border-radius:9px;
+    padding:9px 14px;margin-bottom:10px;font-size:12.5px;color:var(--text);
+    display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .selbanner button{background:none;border:none;color:var(--gold);font-weight:600;
+    font-size:12.5px;cursor:pointer;text-decoration:underline;padding:0}
+  .selbanner button:hover{filter:brightness(1.2)}
+
+  /* smart filter */
+  .smartrow{display:flex;gap:8px;margin-bottom:10px}
+  .smartrow input{flex:1}
+  .smartchips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .schip{display:inline-flex;gap:8px;align-items:center;font-family:var(--mono);font-size:11px;
+    background:var(--gold-soft);border:1px solid var(--gold-dim);color:var(--gold);
+    border-radius:999px;padding:4px 10px}
+  .schip b{cursor:pointer;color:var(--lose);font-size:13px}
+
+  /* strategy sheets */
+  .strathead{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  select{background:var(--inset);border:1px solid var(--line);color:var(--text);
+    padding:8px 10px;border-radius:7px;font-family:var(--mono);font-size:12.5px}
+  select:focus{outline:none;border-color:var(--gold)}
+  .stratgrids{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;margin-top:14px}
+  .stratblock h4{margin:0 0 8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--muted);font-weight:500}
+  table.sheet{border-collapse:collapse}
+  table.sheet th{position:static;box-shadow:none;cursor:default;padding:4px 6px;text-align:center}
+  table.sheet td{padding:0;border:1px solid var(--bg)}
+  table.sheet td.rl{padding:2px 8px;font-family:var(--mono);font-size:11px;color:var(--muted);
+    text-align:right;background:var(--panel)}
+  .cell-c{display:block;width:36px;height:26px;line-height:26px;text-align:center;
+    font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;color:#fff}
+  .cell-c:hover{filter:brightness(1.25)}
+  .cH{background:#C0453C}.cS{background:#4763C8}.cP{background:#3F9944;}
+  .cDH{background:#83305F}.cDS{background:#5E2150}.cPH{background:#C77B1D}.cRH{background:#8A3FD1}
+  .sheetlegend{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;font-family:var(--mono);
+    font-size:10.5px;color:var(--muted)}
+  .sheetlegend i{display:inline-block;width:26px;height:15px;border-radius:3px;
+    vertical-align:-3px;margin-right:5px;text-align:center;color:#fff;font-style:normal;
+    font-size:9px;line-height:15px;font-weight:700}
+
+  /* journey */
+  .jmini{background:none;border:1px solid var(--line);color:var(--muted);border-radius:5px;
+    padding:2px 7px;cursor:pointer;font-size:11px;font-family:var(--mono)}
+  .jmini:hover{border-color:var(--gold);color:var(--gold)}
+  #jChartWin,#jChartNet{padding:16px}
+  .jdrag{cursor:grab;color:var(--muted);font-size:13px;user-select:none;margin-right:2px}
+  #jTable tr.datarow{cursor:default}
+  #jTable tr.dragging{opacity:.35}
+  #jTable tr.drop-above{box-shadow:inset 0 2px 0 var(--gold)}
+  #jTable tr.drop-below{box-shadow:inset 0 -2px 0 var(--gold)}
+  .jreq{display:flex;flex-direction:column;gap:3px;font-family:var(--mono);font-size:9.5px;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .jreq input{width:64px;padding:6px 8px}
+  .mhit{display:inline-block;min-width:20px;text-align:center;background:var(--gold);
+    color:#141006;border-radius:5px;font-weight:700;padding:1px 4px;font-size:11px}
+  #jMissions td,#jMissions th{padding:5px 7px}
+  .view{display:none} .view.on{display:block}
+  footer{margin-top:60px;font-family:var(--mono);font-size:10.5px;color:var(--muted);
+    border-top:1px solid var(--line);padding-top:14px;letter-spacing:.05em}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="headrow">
+    <div>
+      <p class="eyebrow">Blackjack · Deck Database &amp; Simulator</p>
+      <h1><span class="fl">Deck</span> Room</h1>
+    </div>
+    <div class="rulechips">
+      <span class="rulechip"><b id="nDecks">—</b> decks</span>
+      <span class="rulechip">classic game flow · <b>S17</b> · DAS · split to 2</span>
+      <span class="rulechip">deal order <b>P·P·D·D</b></span>
+      <span class="rulechip">BJ <b>+500 / −250</b> flat · chips 100-1k</span>
+      <span class="rulechip">strategy <b id="stratChip">Book basic · S17</b></span>
+      <span class="rulechip" title="Weighted KPIs: mean over 200 stochastic reasonable-player runs per deck (close calls like 16v10 randomized)"><b>200</b>-run weighted sim</span>
+    </div>
+  </div>
+</header>
+
+<nav>
+  <button data-v="dash" class="on">Analytics</button>
+  <button data-v="db">Database</button>
+  <button data-v="strat">Strategy</button>
+  <button data-v="gen">Generate</button>
+  <button data-v="missions">Missions</button>
+  <button data-v="journey">Journey</button>
+  <button data-v="play">Play a Deck</button>
+  <div class="spacer"></div>
+  <span class="filterpill" id="filterPill"></span>
+</nav>
+
+<!-- ═══════════ ANALYTICS ═══════════ -->
+<section class="view on" id="v-dash">
+  <p class="secnote" id="dashScope"></p>
+  <div class="cards-grid" id="dashCards"></div>
+
+  <h2 class="sec">Distributions <span style="font-style:normal;font-size:13px;color:var(--muted)">— per deck</span></h2>
+  <p class="secnote">Hover a bar for exact counts.</p>
+  <div class="charts" id="dashCharts"></div>
+
+  <h2 class="sec">By tier</h2>
+  <p class="secnote">Averages per deck under book play. Win % excludes pushes.</p>
+  <div style="overflow-x:auto">
+  <table id="tierTable"><thead><tr>
+    <th title="Deck quality decile 0–9 from the upstream scorer (9 = highest)">Tier</th>
+    <th title="Number of decks in this tier (after filters)">Decks</th>
+    <th title="Average upstream optimal-play score (optimal_final)">Avg score</th>
+    <th title="Average rounds dealt per deck under the active sheet">Rounds</th>
+    <th title="Average player natural blackjacks per deck (flat +$500)">P BJ</th>
+    <th title="Average dealer natural blackjacks per deck (flat −$250)">D BJ</th>
+    <th title="Average tied hands per deck — bet returned">Pushes</th>
+    <th title="Average player hands won per deck">P wins</th>
+    <th title="Average dealer hands won per deck (incl. player busts)">D wins</th>
+    <th title="Player wins ÷ decided hands — pushes excluded">Win %</th>
+    <th title="Average player 3+ card 21s per deck">P 21(3+)</th>
+    <th title="Average dealer 3+ card 21s per deck">D 21(3+)</th>
+    <th title="Average splits per deck under the active sheet">Splits</th>
+    <th title="Average doubles per deck under the active sheet">Doubles</th>
+    <th title="Average player busts per deck">P bust</th>
+    <th title="Average dealer busts per deck">D bust</th>
+    <th title="Average final bankroll — flat $100 sheet bets from $3,000">Book $</th>
+    <th title="Weighted win % — mean over 200 stochastic reasonable-player runs per deck">Sim Win %</th>
+    <th title="Weighted mean final bankroll over the 200 runs">Sim $</th>
+  </tr></thead><tbody></tbody></table>
+  </div>
+</section>
+
+<!-- ═══════════ DATABASE ═══════════ -->
+<section class="view" id="v-db">
+  <div class="filterbox">
+    <div class="smartrow">
+      <input type="text" id="smartQ"
+        placeholder='Smart filter — "remove decks where dealer makes 21 more than 2 times" · "no dealer blackjacks" · "player wins at least 5" · "sort by fun"'>
+      <button class="act primary" id="smartGo">Apply</button>
+    </div>
+    <div class="smartchips" id="smartChips"></div>
+    <div class="err" id="smartErr" style="margin:0 0 8px"></div>
+    <div class="filterhead">
+      <h3>Filters</h3>
+      <div class="exportrow">
+        <span class="matchcount" id="matchCount"></span>
+        <span class="matchcount" id="selCount" style="color:var(--text)"></span>
+        <button class="act" id="clearF">Clear filters</button>
+        <button class="act" id="selAllF" title="Select every deck matching the current filters, across all pages">Select all</button>
+        <button class="act" id="selNone">Clear selection</button>
+        <button class="act" id="addJourneyBtn" disabled
+          title="Append the selected decks to the Journey (FIFO play order)">Add to journey</button>
+        <button class="act" id="removeSel" disabled style="border-color:var(--lose)"
+          title="Permanently delete the selected decks from the database (data.js, deck_stats.json, decks.sqlite) — archived to removed_decks.json and restorable">Remove selected</button>
+        <button class="act" id="restoreDb" style="display:none"
+          title="Merge every archived (previously deleted) deck back into the database">Restore archived</button>
+        <label><input type="checkbox" id="expStats"> include stats</label>
+        <button class="act" id="exportBtn">Export filtered</button>
+        <button class="act primary" id="exportSelBtn" disabled>Export selected</button>
+      </div>
+    </div>
+    <div class="fgrid" id="fgrid"></div>
+  </div>
+
+  <div class="selbanner" id="selBanner" style="display:none"></div>
+  <div class="tablewrap">
+  <table id="deckTable"><thead><tr id="deckHead"></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="pager">
+    <span id="pageInfo"></span>
+    <button class="act" id="prevPg">‹ Prev</button>
+    <button class="act" id="nextPg">Next ›</button>
+  </div>
+</section>
+
+<!-- ═══════════ STRATEGY ═══════════ -->
+<section class="view" id="v-strat">
+  <div class="filterbox">
+    <div class="filterhead">
+      <h3>Cheat sheet</h3>
+      <div class="strathead">
+        <select id="sheetSel">
+          <option value="book">Book basic (default)</option>
+          <option value="duel">DUEL chart (with surrender)</option>
+          <option value="custom">Custom (editable)</option>
+        </select>
+        <label style="display:flex;gap:7px;align-items:center;font-size:12.5px;color:var(--text);cursor:pointer">
+          <input type="checkbox" id="h17chk"> dealer hits soft 17 (H17)
+        </label>
+        <button class="act primary" id="applyStrat">Apply &amp; re-simulate all decks</button>
+      </div>
+    </div>
+    <div class="exportrow">
+      <div class="progress"><i id="stratBar"></i></div>
+      <span class="genstat" id="stratStat">active: Book basic · S17</span>
+    </div>
+    <p class="secnote" style="margin-top:10px">
+      Click any cell to edit (editing switches to Custom). Applying re-simulates all
+      <span id="stratN"></span> decks in the browser and updates Analytics, the Database table,
+      the play baselines and the generator. With 3+ cards (double/split/surrender unavailable)
+      each cell falls back to its second action — D/H→Hit, D/S→Stand, P/H→Hit, R/H→Hit
+      (this game has no surrender). The .sqlite file keeps the shipped Book·S17 baseline.
+      Note: the weighted <b>sim</b> columns (200 reasonable-player runs) are computed offline
+      for Book·S17 and are not affected by re-simulating here — refresh them with
+      <code>node simulate.js &amp;&amp; python3 build_sqlite.py</code>.
+    </p>
+    <div class="stratgrids" id="stratGrids"></div>
+    <div class="sheetlegend">
+      <span><i class="cH">H</i>hit</span><span><i class="cS">S</i>stand</span>
+      <span><i class="cP">P</i>split</span><span><i class="cDH">D/H</i>double else hit</span>
+      <span><i class="cDS">D/S</i>double else stand</span><span><i class="cPH">P/H</i>split else hit</span>
+      <span><i class="cRH">R/H</i>surrender else hit</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ GENERATE ═══════════ -->
+<section class="view" id="v-gen">
+  <div class="filterbox">
+    <div class="filterhead">
+      <h3>Reference deck</h3>
+      <div class="exportrow">
+        <input type="text" id="genRefInput" placeholder="deck id…" style="width:200px">
+        <button class="act" id="genRefLoad">Use as reference</button>
+      </div>
+    </div>
+    <p class="secnote" id="genRefInfo">Pick the example deck whose KPIs you want to clone — enter an ID above, click “Generate similar” in the Play view, or leave it and set targets by hand.</p>
+    <div id="genKpis" style="overflow-x:auto"></div>
+  </div>
+
+  <div class="filterbox">
+    <div class="filterhead">
+      <h3>Generator</h3>
+      <div class="exportrow">
+        <label style="font-family:var(--mono);font-size:11px;color:var(--muted)">DECKS
+          <input type="number" id="genCount" value="10" min="1" style="width:70px"></label>
+        <label style="font-family:var(--mono);font-size:11px;color:var(--muted)">MAX ATTEMPTS
+          <input type="number" id="genCap" value="500000" min="1000" step="1000" style="width:110px"></label>
+        <button class="act primary" id="genRun">Run</button>
+        <button class="act" id="genStop" disabled>Stop</button>
+      </div>
+    </div>
+    <div class="exportrow" style="margin-top:6px">
+      <div class="progress"><i id="genBar"></i></div>
+      <span class="genstat" id="genStat">idle</span>
+    </div>
+    <p class="secnote" style="margin-top:10px">Fresh random 52-card shuffles are kept only when every checked KPI of a full book play-through (S17) lands within ± tolerance of the target. Upstream fields (score, tier, fun, noise) are inherited from the reference as placeholders; <code>generated_from</code> marks the source deck in the export. <b>Generated decks live only in this session</b> — a reload loses them unless you press <b>Add to database</b>, which makes them permanent (playable, filterable, exportable like any other deck).</p>
+  </div>
+
+  <div class="filterhead" style="margin-bottom:10px">
+    <h2 class="sec" style="margin:0">Generated decks <span class="matchcount" id="genFound"></span></h2>
+    <div class="exportrow">
+      <button class="act primary" id="genAddDb" disabled
+        title="Save the generated decks permanently into the database — they become playable, filterable and exportable like any other deck (sim columns fill on the next node simulate.js run)">Add to database</button>
+      <button class="act" id="genExport" disabled>Export generated JSON</button>
+      <button class="act" id="genClear">Clear</button>
+    </div>
+  </div>
+  <div style="overflow-x:auto">
+  <table id="genTable"><thead><tr>
+    <th title="Newly generated deck id — click a row to play it">Deck ID</th>
+    <th title="Rounds dealt when the active sheet plays the deck">Rnds</th>
+    <th title="Player natural blackjacks (flat +$500)">P BJ</th>
+    <th title="Dealer natural blackjacks (flat −$250)">D BJ</th>
+    <th title="Tied hands — bet returned">Push</th>
+    <th title="Player hands won">P W</th>
+    <th title="Dealer hands won (incl. player busts)">D W</th>
+    <th title="Player wins ÷ decided hands — pushes excluded">Win %</th>
+    <th title="Player 3+ card 21s">P21+</th>
+    <th title="Dealer 3+ card 21s">D21+</th>
+    <th title="Splits taken by the sheet">Spl</th>
+    <th title="Doubles taken by the sheet">Dbl</th>
+    <th title="Final bankroll — flat $100 sheet bets from $3,000">Book $</th><th></th>
+  </tr></thead><tbody></tbody></table>
+  </div>
+</section>
+
+<!-- ═══════════ MISSIONS MACHINE ═══════════ -->
+<section class="view" id="v-missions">
+  <div class="filterbox">
+    <div class="filterhead">
+      <h3>Mission inventory</h3>
+      <div class="exportrow">
+        <label class="jreq"># decks<input type="number" id="mK" value="5" min="1" max="30"></label>
+        <button class="act" id="mSuggest" title="Fill every selected target with an achievable value scaled by the Effort control">Suggest targets</button>
+        <button class="act primary" id="mBuild" title="Pick the decks (from the current Database filter) that best deliver the selected missions, and load them as the Journey">Build journey for missions</button>
+        <button class="act" id="mExport" title="Download a scripted daily-missions config (daily_missions_economy_spec_v2 format)">Export daily config</button>
+        <button class="act" id="mExportM3" title="Download a Mission 3.0 cycle config (PRD format: mission pool + token rewards + Bonus-Cash chest milestones)">Export Mission 3.0 cycle</button>
+      </div>
+    </div>
+    <div class="err" id="mErr"></div>
+    <div class="exportrow" style="margin:6px 0 4px;align-items:flex-end">
+      <span class="genstat" style="align-self:center">COMPOSE EXPERIENCE</span>
+      <label class="jreq">missions<input type="number" id="mCount" value="3" min="1" max="5"></label>
+      <label class="jreq" title="How hard completion should feel — scales every target against the simulated expected events across the journey">effort
+        <select id="mEffort" style="padding:6px 8px">
+          <option value="0.5">Easy — cruise (50% of expected)</option>
+          <option value="0.75" selected>Medium (75%)</option>
+          <option value="1.0">Hard (100%)</option>
+          <option value="1.3">Grind — stretch (130%)</option>
+        </select></label>
+      <label class="jreq" title="PRD §6.1 comfort-zone ratio: share of missions from the player's easy tier vs stretch tiers">comfort %
+        <input type="number" id="mComfort" value="70" min="0" max="100" style="width:64px"></label>
+      <label class="jreq" title="Order missions across the journey">experience arc
+        <select id="mArc" style="padding:6px 8px">
+          <option value="quick" selected>Quick wins first</option>
+          <option value="hardopen">Hard opener</option>
+          <option value="mixed">Mixed</option>
+        </select></label>
+      <button class="act primary" id="mCompose"
+        title="Auto-pick mission types by tier and comfort ratio, set targets by effort, then build the delivering journey">Compose</button>
+    </div>
+    <p class="secnote">Mission rates are measured per deck by the weighted simulation — 200 seeded “reasonable player” runs under the active strategy sheet, including the human deviations (standing on 16 vs 10, skipped doubles/splits, soft-18 stands). Tick missions, set targets (or let it suggest them), then build: the machine assembles the deck journey whose expected events cover every target. Rates refresh from the pool selected in the Database filter (currently <b id="mPool"></b> decks). Config export follows <code>daily_missions_economy_spec_v2.md</code>; rewards are placeholders per its §6.</p>
+    <div class="tablewrap">
+    <table id="mTable"><thead><tr>
+      <th></th><th style="text-align:left">Mission type</th>
+      <th title="M3 = Mission 3.0 PRD bank · D = daily-missions spec">Src</th>
+      <th title="Difficulty tier assigned from the pool's simulated rate (PRD §6.1): ≥0.45/deck easy · ≥0.12 medium · below hard">Tier</th>
+      <th title="mean events per deck across the pool (weighted sim)">Avg / deck</th>
+      <th title="share of pool decks where the expected count is ≥ 1">≥1 in deck</th>
+      <th title="best single deck in the pool">Best deck</th>
+      <th>Target</th>
+    </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+  <div id="mResult"></div>
+</section>
+
+<!-- ═══════════ JOURNEY ═══════════ -->
+<section class="view" id="v-journey">
+  <div class="filterbox">
+    <div class="filterhead">
+      <h3>Journey builder</h3>
+      <div class="exportrow">
+        <input type="text" id="jAddId" placeholder="deck id…" style="width:170px">
+        <button class="act" id="jAddBtn">Add</button>
+        <button class="act" id="jAddRandom" title="Append 5 random decks from the current Database filter">+5 random from filter</button>
+        <button class="act primary" id="jStart">Play journey ▸</button>
+        <button class="act" id="jShare"
+          title="Copy a link that loads this journey (deck list, order and settings) for anyone who opens it — results are not included">Share link</button>
+        <button class="act" id="jReset" title="Keep the deck list, clear the recorded results">Reset results</button>
+        <button class="act" id="jClear">Clear journey</button>
+      </div>
+    </div>
+    <div class="err" id="jErr"></div>
+    <p class="secnote">The player experiences these decks <b>in order (FIFO)</b>. Build the list here, or tick decks in the Database tab and press “Add to journey”. Play them from the Play tab — each finished deck records its actual result automatically and the next one is queued. The journey survives reloads (saved in this browser).</p>
+    <div class="exportrow" style="margin-top:8px;align-items:flex-end">
+      <span class="genstat" style="align-self:center">BULK ADD</span>
+      <label class="jreq"># decks<input type="number" id="jBulkN" value="5" min="1"></label>
+      <label class="jreq">P BJ ≥<input type="number" data-jmin="player_bj"></label>
+      <label class="jreq">Splits ≥<input type="number" data-jmin="splits"></label>
+      <label class="jreq">Doubles ≥<input type="number" data-jmin="doubles"></label>
+      <label class="jreq">P21+ ≥<input type="number" data-jmin="player_21_3plus"></label>
+      <label class="jreq">Pushes ≥<input type="number" data-jmin="pushes"></label>
+      <label class="jreq">sWin% ≥<input type="number" data-jmin="sim_win_pct"></label>
+      <label class="jreq" title="cap the weighted win % — e.g. 40 fills the journey with losing decks so the cumulative net falls">sWin% ≤<input type="number" data-jmax="sim_win_pct"></label>
+      <label class="jreq" title="cap the expected final bankroll under flat $100 — e.g. 2800 forces money-losing decks">Book$ ≤<input type="number" data-jmax="sim_book"></label>
+      <label class="jreq">D BJ ≤<input type="number" data-jmax="dealer_bj"></label>
+      <label class="jreq">Bust% ≤<input type="number" data-jmax="sim_500_bust"></label>
+      <button class="act primary" id="jBulkAdd"
+        title="Append N random decks meeting every requirement (from the current Database filter, skipping decks already in the journey)">Add matching</button>
+      <span class="genstat" id="jBulkInfo" style="align-self:center"></span>
+    </div>
+    <div class="exportrow" style="margin-top:4px">
+      <span class="genstat">PACING</span>
+      <button class="act" data-jorder="easy" title="Highest weighted win % first — friendly opening, tough finish">Ease-in (kind → tough)</button>
+      <button class="act" data-jorder="hard" title="Lowest weighted win % first">Tough start</button>
+      <button class="act" data-jorder="wave" title="Alternate kind and tough decks">Roller-coaster</button>
+      <button class="act" data-jorder="shuffle">Shuffle</button>
+      <span class="genstat" style="margin-left:14px">EXPECTED-NET MODEL</span>
+      <select id="jModel">
+        <option value="book">flat $100</option>
+        <option value="mix">chips 200/350/500</option>
+        <option value="500">flat $500</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="cards-grid" id="jTiles"></div>
+
+  <h2 class="sec">Experience curve</h2>
+  <p class="secnote">Expected win % per deck in play order (weighted 200-run sim, band = ±1σ) — cream dots are the actual results as the journey is played.</p>
+  <div class="chart" id="jChartWin"></div>
+
+  <h2 class="sec">Cumulative net</h2>
+  <p class="secnote" id="jNetNote"></p>
+  <div class="chart" id="jChartNet"></div>
+
+  <h2 class="sec">Missions per stage <span class="matchcount" id="jMissCount"></span></h2>
+  <p class="secnote">Average occurrences of each mission (from Blackjack_Missions_One_Deck.xlsx) at every stage of the journey. 20 of the 30 missions are rank-based and countable — suit missions (Same Suit/Color, Suited BJ, Mixed/Colored/Perfect Pair, Flushes, Straight Flushes) need suits the decks don't carry.</p>
+  <div class="exportrow" style="margin:2px 0 10px">
+    <span class="genstat">SUM RANGE — stage</span>
+    <input type="number" id="jMissFrom" min="1" value="1" style="width:64px" title="first stage included in the Total column">
+    <span class="genstat">to</span>
+    <input type="number" id="jMissTo" min="1" style="width:64px" title="last stage included in the Total column — e.g. 8, 7 or 4">
+    <span class="genstat" style="margin-left:14px">RUNS / DECK</span>
+    <input type="number" id="jMissRuns" min="1" max="500" style="width:72px"
+      title="stochastic reasonable-player runs averaged per deck (1 = single deterministic line)">
+    <span class="genstat" id="jMissNote"></span>
+  </div>
+  <div class="tablewrap" id="jMissions"></div>
+
+  <h2 class="sec">Deck list <span class="matchcount" id="jCount"></span></h2>
+  <div class="tablewrap">
+  <table id="jTable"><thead><tr>
+    <th title="Play order — first in, first out">#</th>
+    <th title="Click a row to open the deck in the Play tab">Deck</th>
+    <th>Tier</th>
+    <th title="Weighted win % (200 reasonable-player runs)">sWin %</th>
+    <th title="Spread of the weighted win %">±</th>
+    <th id="jModelCol" title="Expected final bankroll under the selected bet model">Exp $</th>
+    <th title="Bust risk at flat $500">Bust %</th>
+    <th style="text-align:left">Status</th><th></th>
+  </tr></thead><tbody></tbody></table>
+  </div>
+</section>
+
+<!-- ═══════════ PLAY ═══════════ -->
+<section class="view" id="v-play">
+  <div class="deckbar" id="deckbar" style="display:none">
+    <span>Deck <b class="idb" id="curId"></b></span>
+    <span>Tier <b id="curTier"></b></span>
+    <span>Score <b id="curScore"></b></span>
+    <span>Fun <b id="curFun"></b></span>
+    <span title="Weighted win % over 200 stochastic reasonable-player runs — what a typical human line gets on this deck">Sim win <b id="curSim"></b></span>
+    <span id="curJourney" style="display:none">Journey <b id="curJourneyTxt" style="color:var(--gold)"></b></span>
+    <span>Position <b id="curPos"></b></span>
+    <span>Rounds <b id="curRounds">0</b></span>
+    <div class="lookup">
+      <input type="text" id="deckIdInput" placeholder="deck id…">
+      <button class="act" id="loadBtn">Load</button>
+      <button class="act" id="randBtn">Random</button>
+      <button class="act" id="replayBtn"
+        title="Show the exact deterministic play-through the database stats count — the active sheet with flat $100 bets">Baseline replay</button>
+      <button class="act" id="genFromPlay">Generate similar →</button>
+    </div>
+  </div>
+  <div class="deckbar" id="deckbarEmpty">
+    <span>No deck loaded — pick one from the Database tab, or:</span>
+    <div class="lookup">
+      <input type="text" id="deckIdInput2" placeholder="deck id…">
+      <button class="act" id="loadBtn2">Load</button>
+      <button class="act primary" id="randBtn2">Random deck</button>
+    </div>
+  </div>
+  <div class="err" id="lookupErr"></div>
+  <p class="secnote" id="betOutlook" style="display:none;margin:2px 0 12px"></p>
+
+  <div id="stage" style="display:none">
+    <div class="tape" id="tape"></div>
+    <div class="tape-legend">
+      <span><i style="background:#232e2a"></i>dealt</span>
+      <span><i style="background:var(--gold)"></i>next card</span>
+      <span><i style="background:#101614"></i>upcoming</span>
+    </div>
+
+    <div class="felt">
+      <div class="statusbar">
+        <span>BANKROLL <b id="stBankroll">$3,000</b></span>
+        <span>BET <b id="stBet">—</b></span>
+        <span>NET <b id="stNet">$0</b></span>
+        <span class="lasthand" id="stLast" style="display:none">LAST HAND</span>
+      </div>
+      <div class="row">
+        <div class="side-label">Dealer</div>
+        <div class="hands"><div class="hand"><div class="cards" id="dealerCards"></div>
+          <div class="htotal" id="dealerTotal"></div></div></div>
+      </div>
+      <div class="row">
+        <div class="side-label">Player</div>
+        <div class="hands" id="playerHands"></div>
+      </div>
+      <div class="controls">
+        <button class="act primary" id="btnDeal">Deal round</button>
+        <span class="chips" id="chipRow" style="display:none"></span>
+        <button class="act" id="btnHit" disabled>Hit</button>
+        <button class="act" id="btnStand" disabled>Stand</button>
+        <button class="act" id="btnDouble" disabled>Double</button>
+        <button class="act" id="btnSplit" disabled>Split</button>
+        <button class="act" id="btnAuto">Auto-play rest →</button>
+        <button class="act primary" id="jNextBtn" style="display:none">Next journey deck →</button>
+        <button class="act" id="btnReset">Restart deck</button>
+        <div class="hint" id="hint"></div>
+      </div>
+      <div class="msg" id="msg"></div>
+    </div>
+    <div class="kbd-note">keys: <b>enter</b> deal / next · <b>1-4</b> bet chip · <b>H</b> hit · <b>S</b> stand · <b>D</b> double · <b>P</b> split · <b>A</b> auto-play</div>
+
+    <div class="sessgrid" id="sessGrid"></div>
+
+    <div class="afterpanel" id="replayPanel" style="display:none">
+      <h3>Baseline replay</h3>
+      <p id="replayNote"></p>
+      <div style="overflow-x:auto">
+      <table><thead><tr><th>#</th><th style="text-align:left">Player — actions → result</th>
+        <th>Dealer</th><th>Bankroll</th></tr></thead>
+        <tbody id="replayBody"></tbody></table>
+      </div>
+    </div>
+
+    <div class="afterpanel" id="afterPanel">
+      <h3>Deck complete</h3>
+      <p>Your session vs the book baseline stored in the database (deterministic basic-strategy play-through, S17).</p>
+      <table><thead><tr><th>Stat</th><th>You</th><th>Baseline</th><th>Δ</th></tr></thead>
+        <tbody id="afterBody"></tbody></table>
+      <p class="secnote" id="afterNote" style="margin-top:8px"></p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  DECK ROOM · engine mirrors SwiftGames classic Blackjack (BlackjackViewModel.swift): deal P1·P2·D-up·hole, naturals flat +$500/−$250 before betting, bet after deal, S17, DAS, split to 2 hands by value, split aces one card, dealer skips draw when all hands bust, last hand at ≤12 cards · book baseline bets flat $100 from $3,000 · database: decks.sqlite · 21(3+) = totals of exactly 21 with three or more cards
+</footer>
+</div>
+
+<script>
+// cache-busted load so a deck deletion is always visible on the next reload
+document.write('<script src="data.js?v=' + Date.now() + '"><\/script>');
+</script>
+<script>
+'use strict';
+// ─────────────────────────────────────────────────────── data boot
+const RAW = window.DECK_DATA;
+const IX = Object.fromEntries(RAW.fields.map((f,i)=>[f,i]));
+let DECKS = RAW.rows.map(r=>{
+  const o = {};
+  for (const f of RAW.fields) o[f] = r[IX[f]];
+  const dec = o.player_wins + o.dealer_wins;
+  o.win_pct = dec ? +(100*o.player_wins/dec).toFixed(1) : 0;
+  o.pd_ratio = o.dealer_wins ? +(o.player_wins/o.dealer_wins).toFixed(3) : null;
+  return o;
+});
+const BYID = new Map(DECKS.map(d=>[String(d.deck_id), d]));
+document.getElementById('nDecks').textContent = DECKS.length.toLocaleString();
+
+const fmt = n => n==null?'—':n.toLocaleString('en-US');
+const f1 = n => n==null?'—':n.toLocaleString('en-US',{maximumFractionDigits:1,minimumFractionDigits:1});
+const f2 = n => n==null?'—':n.toLocaleString('en-US',{maximumFractionDigits:2,minimumFractionDigits:2});
+
+// ─────────────────────────────────────────────────────── filters
+const FILTERS = [
+  {key:'tier',        label:'Tier',            step:1},
+  {key:'optimal_final',label:'Optimal score',  step:50},
+  {key:'fun_pct',     label:'Fun percentile',  step:1},
+  {key:'skill_noise', label:'Skill noise',     step:0.1},
+  {key:'player_bj',   label:'Player BJ',       step:1},
+  {key:'dealer_bj',   label:'Dealer BJ',       step:1},
+  {key:'pushes',      label:'Pushes',          step:1},
+  {key:'win_pct',     label:'Player win %',    step:1},
+  {key:'dealer_21_3plus',label:'Dealer 21 (3+)',step:1},
+  {key:'player_21_3plus',label:'Player 21 (3+)',step:1},
+  {key:'splits',      label:'Splits',          step:1},
+  {key:'doubles',     label:'Doubles',         step:1},
+  {key:'book_final',  label:'Book final $',    step:100},
+  {key:'sim_win_pct', label:'Sim win % (weighted)', step:1},
+  {key:'sim_book',    label:'Sim book $ (weighted)', step:100},
+  {key:'sim_mix_book',label:'Sim mix 200/350/500 $', step:100},
+  {key:'sim_500_book',label:'Sim flat $500 $',       step:100},
+  {key:'sim_500_bust',label:'Bust % @ $500',         step:1},
+];
+const fstate = {}; // key -> {min,max}
+let idQuery = '';
+
+function buildFilterUI(){
+  const g = document.getElementById('fgrid');
+  let html = `<div class="frow"><label>Deck ID contains</label>
+    <div class="pair"><input type="text" id="f_id" placeholder="e.g. 32217…"></div></div>`;
+  for (const f of FILTERS){
+    html += `<div class="frow"><label>${f.label}</label><div class="pair">
+      <input type="number" step="${f.step}" data-fk="${f.key}" data-side="min" placeholder="min">
+      <span>–</span>
+      <input type="number" step="${f.step}" data-fk="${f.key}" data-side="max" placeholder="max">
+    </div></div>`;
+  }
+  g.innerHTML = html;
+  let deb;
+  g.addEventListener('input', e=>{
+    clearTimeout(deb);
+    deb = setTimeout(()=>{
+      idQuery = document.getElementById('f_id').value.trim();
+      for (const inp of g.querySelectorAll('input[data-fk]')){
+        const k = inp.dataset.fk, s = inp.dataset.side;
+        fstate[k] = fstate[k]||{};
+        fstate[k][s] = inp.value === '' ? null : +inp.value;
+      }
+      state.page = 0;
+      refresh();
+    }, 180);
+  });
+}
+
+// ── smart (natural-language) filters ──
+let smartFilters=[];
+// ── forgiving natural-language parsing ──
+const WORDNUM={zero:0,none:0,once:1,one:1,twice:2,two:2,three:3,four:4,five:5,
+  six:6,seven:7,eight:8,nine:9,ten:10};
+const NUMRE='(-?\\d+\\.?\\d*|zero|once|one|twice|two|three|four|five|six|seven|eight|nine|ten)';
+function toNum(s){s=String(s).trim();return WORDNUM[s]!==undefined?WORDNUM[s]:parseFloat(s);}
+
+// comparator first (so its number is consumed before metric "21" detection);
+// "no more than" / "no less than" checked before the bare forms
+const CMP_PATTERNS=[
+  [`between\\s+${NUMRE}\\s+(?:and|to|-)\\s+${NUMRE}`, m=>({op:'between',a:toNum(m[1]),b:toNum(m[2])})],
+  [`(?:at\\s+least|no\\s+(?:less|fewer)\\s+th[ae]n|>=|minimum|min\\.?)\\s*${NUMRE}`, m=>({op:'>=',a:toNum(m[1])})],
+  [`(?:at\\s+most|no\\s+more\\s+th[ae]n|up\\s+to|<=|maximum|max\\.?)\\s*${NUMRE}`, m=>({op:'<=',a:toNum(m[1])})],
+  [`(?:more\\s+th[ae]n|over|above|greater\\s*(?:th[ae]n)?|bigger\\s*(?:th[ae]n)?|>)\\s*${NUMRE}`, m=>({op:'>',a:toNum(m[1])})],
+  [`(?:less\\s+th[ae]n|under|below|fewer\\s+th[ae]n|<)\\s*${NUMRE}`, m=>({op:'<',a:toNum(m[1])})],
+  [`${NUMRE}\\s*(?:\\+|or\\s+more|or\\s+higher|or\\s+above)`, m=>({op:'>=',a:toNum(m[1])})],
+  [`${NUMRE}\\s*(?:or\\s+less|or\\s+fewer|or\\s+lower|or\\s+below)`, m=>({op:'<=',a:toNum(m[1])})],
+  [`(?:exactly|equal(?:s)?(?:\\s+to)?|=|\\bis\\b|\\bare\\b)\\s*${NUMRE}`, m=>({op:'=',a:toNum(m[1])})],
+];
+function extractComparator(txt){
+  for(const[src,mk]of CMP_PATTERNS){
+    const re=new RegExp(src);
+    const m=txt.match(re);
+    if(m)return{...mk(m),rest:txt.replace(re,' ')};
+  }
+  if(/\b(?:no|zero|without|never|none)\b/.test(txt))
+    return{op:'=',a:0,rest:txt.replace(/\b(?:no|zero|without|never|none)\b/,' ')};
+  return null;
+}
+// metric from keywords anywhere in the clause — side word + concept word
+function detectMetric(txt){
+  const side=/dealer|house/.test(txt)?'dealer'
+    :/player|user|\bmy\b|\bme\b|\bi\b/.test(txt)?'player':null;
+  const has=re=>re.test(txt);
+  if(has(/bankrupt|bust\s*(?:%|risk|rate|chance)/))return['sim_500_bust','bust % @ $500'];
+  // sim / weighted metrics first — incl. the column shorthand (sWin, sBook, sMix, s500, sPush…)
+  if(has(/\bsim(?:ulated|ulation)?\b|weighted|swin|sbook|smix|s500|spush|\bspw\b|\bsdw\b|\bs\s*win\b|\bs\s*book\b/)){
+    if(has(/mix|350|smix/))return['sim_mix_book','sim mix $'];
+    if(has(/500|s500|flat\s*five/))return['sim_500_book','sim flat $500'];
+    if(has(/push|spush/))return['sim_push','sim pushes'];
+    if(has(/dealer|\bsdw\b/))return['sim_dw','sim dealer wins'];
+    if(has(/player|\bspw\b/))return['sim_pw','sim player wins'];
+    if(has(/book|bankroll|\$|money|final|sbook/))return['sim_book','sim book $'];
+    return['sim_win_pct','sim win %'];
+  }
+  if(has(/win\s*(?:%|pct|rate|percent(?:age)?)|winrate/))return['win_pct','win %'];
+  if(has(/\bbjs?\b|black\s*jacks?|naturals?/))
+    return side==='dealer'?['dealer_bj','dealer BJ']:['player_bj','player BJ'];
+  if(has(/\b21s?\b/))
+    return side==='dealer'?['dealer_21_3plus','dealer 21(3+)']:['player_21_3plus','player 21(3+)'];
+  if(has(/bust/))
+    return side==='dealer'?['dealer_busts','dealer busts']:['player_busts','player busts'];
+  if(has(/\bwins?\b|\bwon\b|winning/))
+    return side==='dealer'?['dealer_wins','dealer wins']:['player_wins','player wins'];
+  if(has(/push|\btie[sd]?\b|\bdraws?\b/))return['pushes','pushes'];
+  if(has(/split/))return['splits','splits'];
+  if(has(/double/))return['doubles','doubles'];
+  if(has(/pair/))return['pairs_dealt','pairs dealt'];
+  if(has(/round|\bhands?\b/))return['rounds','rounds'];
+  if(has(/book|bankroll|final|money|\$/))return['book_final','book $'];
+  if(has(/score|optimal/))return['optimal_final','score'];
+  if(has(/tier/))return['tier','tier'];
+  if(has(/\bfun\b/))return['fun_pct','fun %'];
+  if(has(/noise|skill/))return['skill_noise','noise'];
+  if(has(/ratio/))return['pd_ratio','P:D ratio'];
+  return null;
+}
+function parseClause(txt){
+  let cmp=extractComparator(txt);
+  const rest=cmp?cmp.rest:txt;
+  const met=detectMetric(rest);
+  if(!met)return null;
+  if(!cmp){
+    // trailing bare number ("pushes 0") — ignore the 21 that names the metric
+    const m=rest.replace(/\b21s?\b/g,' ').match(new RegExp(NUMRE));
+    if(!m)return null;
+    cmp={op:'=',a:toNum(m[1])};
+  }
+  return{metric:met[0],label:met[1],op:cmp.op,a:cmp.a,b:cmp.b};
+}
+function smartTest(f,d){
+  const v=d[f.metric];
+  if(v==null)return false;
+  switch(f.op){
+    case '>':return v>f.a; case '>=':return v>=f.a;
+    case '<':return v<f.a; case '<=':return v<=f.a;
+    case '=':return v===f.a; case 'between':return v>=f.a&&v<=f.b;
+  }
+  return true;
+}
+function renderSmartChips(){
+  const chips=smartFilters.map((f,i)=>
+    `<span class="schip">${f.exclude?'exclude':'keep'}: ${f.label} ${
+      f.op==='between'?`${f.a}–${f.b}`:(f.op==='='?'= ':f.op+' ')+ (f.op==='between'?'':f.a)
+    }<b data-si="${i}" title="remove this filter">×</b></span>`);
+  if(removedIds.size)chips.push(
+    `<span class="schip">removed: ${fmt(removedIds.size)} deck${removedIds.size>1?'s':''}
+     <b data-restore="1" title="restore the removed decks">×</b></span>`);
+  document.getElementById('smartChips').innerHTML=chips.join('');
+  if(typeof updateDbButtons==='function')updateDbButtons();
+}
+function applySmart(){
+  const raw=document.getElementById('smartQ').value.trim();
+  const err=document.getElementById('smartErr');err.textContent='';
+  if(!raw)return;
+  let q=raw.toLowerCase().replace(/[,;.!?()]/g,' ').replace(/\s+/g,' ').trim();
+  if(/^(clear|reset)\b/.test(q)){
+    smartFilters=[];document.getElementById('smartQ').value='';
+    renderSmartChips();state.page=0;refresh();return;
+  }
+  // "sort by dealer bj desc" — sorts the database table
+  let sm=q.match(/^sort(?:\s+(?:the\s+)?(?:decks?|table))?\s+by\s+(.+?)(?:\s+(asc|ascending|desc|descending))?$/);
+  if(sm){
+    const met=detectMetric(' '+sm[1]+' ');
+    if(!met){err.textContent=`Couldn't find a metric to sort by in "${sm[1]}".`;return;}
+    state.sortKey=met[0];state.sortDir=(sm[2]&&sm[2].startsWith('asc'))?1:-1;
+    document.getElementById('smartQ').value='';renderTable();return;
+  }
+  const exclude=/^\s*(?:please\s+)?(delete|remove|drop|exclude|kill|filter\s*out|hide|ban|discard)/.test(q);
+  let body=q.replace(/^\s*(?:please\s+)?(delete|remove|drop|exclude|kill|filter\s*out|hide|ban|discard|show(?:\s+me)?|keep|only|find|list|give\s+me|get|select)\b/,'');
+  // strip filler so verbs like "make 21", "hit 21 three times" parse cleanly
+  body=body.replace(/\ball\b|\bdecks?\b|\bthe\b|\bthat\b|\bwhich\b|\bwhere\b|\bwho\b|\bwith\b|\bhave\b|\bhaving\b|\bhas\b|\bhad\b|\bmakes?\b|\bmade\b|\bgot\b|\bgets?\b|\bhits?\b|\breach(?:ed|es)?\b|\bopens?\b|\bopened\b|\btimes?\b|\bin\b|\bof\b|\ba\b|\ban\b/g,' ');
+  // protect "between X and Y" before splitting clauses on "and"
+  body=body.replace(new RegExp(`between\\s+${NUMRE}\\s+and\\s+`,'g'),'between $1 to ');
+  const clauses=body.split(/\band\b|&|\bplus\b/).map(s=>s.trim()).filter(Boolean);
+  const parsed=clauses.map(parseClause);
+  if(!parsed.length||parsed.some(p=>!p)){
+    const badIdx=parsed.findIndex(p=>!p);
+    const bad=badIdx>=0?clauses[badIdx].trim():q;
+    err.textContent=`Couldn't parse "${bad}" — examples: "remove decks where dealer makes 21 more than 2 times" · "show decks with pushes 0 and player wins over 5" · "no dealer blackjacks" · "sort by dealer bj" · "clear".`;
+    return;
+  }
+  for(const p of parsed)smartFilters.push({...p,exclude});
+  document.getElementById('smartQ').value='';
+  renderSmartChips();state.page=0;refresh();
+}
+
+let removedIds=new Set();   // decks manually removed via "Remove selected"
+function applyFilters(){
+  return DECKS.filter(d=>{
+    if (removedIds.has(String(d.deck_id))) return false;
+    if (idQuery && !String(d.deck_id).includes(idQuery)) return false;
+    for (const k in fstate){
+      const {min,max} = fstate[k];
+      if (min != null && d[k] < min) return false;
+      if (max != null && d[k] > max) return false;
+    }
+    for (const f of smartFilters){
+      const hit=smartTest(f,d);
+      if (f.exclude && hit) return false;
+      if (!f.exclude && !hit) return false;
+    }
+    return true;
+  });
+}
+function activeFilterCount(){
+  let n = idQuery ? 1 : 0;
+  for (const k in fstate){ if (fstate[k].min!=null || fstate[k].max!=null) n++; }
+  return n + smartFilters.length + (removedIds.size ? 1 : 0);
+}
+
+// ─────────────────────────────────────────────────────── state + refresh
+const state = {view:'dash', sortKey:'optimal_final', sortDir:-1, page:0, pageSize:50,
+  selected:new Set()};
+let FILTERED = DECKS;
+let PAGE_IDS = [];
+
+function refresh(){
+  FILTERED = applyFilters();
+  const nf = activeFilterCount();
+  const pill = document.getElementById('filterPill');
+  pill.style.display = nf ? 'inline-block' : 'none';
+  pill.textContent = `${nf} filter${nf>1?'s':''} · ${fmt(FILTERED.length)} decks`;
+  renderDash();
+  renderTable();
+}
+
+// ─────────────────────────────────────────────────────── dashboard
+const SUMKEYS = ['rounds','hands_played','player_bj','dealer_bj','pushes','player_wins','dealer_wins',
+  'dealer_21_3plus','player_21_3plus','splits','doubles','pairs_dealt','player_busts','dealer_busts',
+  'book_final'];
+
+function renderDash(){
+  const L = FILTERED, n = L.length || 1;
+  const S = {}; for (const k of SUMKEYS) S[k] = 0;
+  for (const d of L) for (const k of SUMKEYS) S[k] += d[k];
+  const dec = S.player_wins + S.dealer_wins;
+  const winPct = dec ? 100*S.player_wins/dec : 0;
+  const ratio = S.dealer_wins ? S.player_wins/S.dealer_wins : 0;
+
+  const stratTxt=` Strategy: ${ACTIVE.name} · ${ACTIVE.h17?'H17':'S17'}.`;
+  document.getElementById('dashScope').textContent =
+    (L.length === DECKS.length
+      ? `Aggregates across all ${fmt(DECKS.length)} decks under deterministic sheet play.`
+      : `Aggregates across ${fmt(L.length)} filtered decks (of ${fmt(DECKS.length)}) — adjust filters in the Database tab.`)+stratTxt;
+
+  const cards = [
+    ['Decks', fmt(L.length), '', 'gold'],
+    ['Rounds', fmt(S.rounds), f1(S.rounds/n)+' / deck', ''],
+    ['Player blackjacks', fmt(S.player_bj), f2(S.player_bj/n)+' / deck', 'win'],
+    ['Dealer blackjacks', fmt(S.dealer_bj), f2(S.dealer_bj/n)+' / deck', 'lose'],
+    ['Pushes', fmt(S.pushes), f2(S.pushes/n)+' / deck', 'push'],
+    ['Player wins', fmt(S.player_wins), f2(S.player_wins/n)+' / deck', 'win'],
+    ['Dealer wins', fmt(S.dealer_wins), f2(S.dealer_wins/n)+' / deck', 'lose'],
+    ['P : D win ratio', f2(ratio)+'', 'player wins per dealer win', 'gold'],
+    ['Player win %', f1(winPct)+'%', 'of decided hands', 'gold'],
+    ['Player 21 (3+ cards)', fmt(S.player_21_3plus), f2(S.player_21_3plus/n)+' / deck', 'win'],
+    ['Dealer 21 (3+ cards)', fmt(S.dealer_21_3plus), f2(S.dealer_21_3plus/n)+' / deck', 'lose'],
+    ['Splits', fmt(S.splits), f2(S.splits/n)+' / deck', ''],
+    ['Doubles', fmt(S.doubles), f2(S.doubles/n)+' / deck', ''],
+    ['Player busts', fmt(S.player_busts), f2(S.player_busts/n)+' / deck', ''],
+    ['Dealer busts', fmt(S.dealer_busts), f2(S.dealer_busts/n)+' / deck', ''],
+    ['Avg book bankroll', '$'+fmt(Math.round(S.book_final/n)), 'flat $100 book bets, $3k start', 'gold'],
+  ];
+  // weighted "reasonable player" ensemble (offline, 200 runs/deck, Book·S17)
+  const simL=L.filter(d=>d.sim_win_pct!=null);
+  if(simL.length){
+    const sm=k=>simL.reduce((a,d)=>a+d[k],0)/simL.length;
+    cards.push(
+      ['Sim win % (weighted)', f1(sm('sim_win_pct'))+'%', `±${f1(sm('sim_win_std'))} · 200 reasonable-player runs/deck`, 'gold'],
+      ['Sim wins P : D', `${f2(sm('sim_pw'))} : ${f2(sm('sim_dw'))}`, 'weighted mean hands per deck', ''],
+      ['Sim pushes', f2(sm('sim_push')), 'weighted mean per deck', 'push'],
+      ['Sim book bankroll', '$'+fmt(Math.round(sm('sim_book'))), `±$${fmt(Math.round(sm('sim_book_std')))} · flat $100`, 'gold'],
+      ['Sim mix 200/350/500', '$'+fmt(Math.round(sm('sim_mix_book'))), `±$${fmt(Math.round(sm('sim_mix_std')))} · bust ${f1(sm('sim_mix_bust'))}%`, 'gold'],
+      ['Sim flat $500', '$'+fmt(Math.round(sm('sim_500_book'))), `±$${fmt(Math.round(sm('sim_500_std')))} · bust ${f1(sm('sim_500_bust'))}%`, 'lose']);
+  }
+  document.getElementById('dashCards').innerHTML = cards.map(([k,v,s,c])=>
+    `<div class="stat ${c}"><div class="k">${k}</div><div class="v">${v}</div>
+     ${s?`<div class="s">${s}</div>`:''}</div>`).join('');
+
+  // histograms
+  const charts = [
+    {title:'Player BJ per deck', key:'player_bj'},
+    {title:'Dealer BJ per deck', key:'dealer_bj'},
+    {title:'Pushes per deck', key:'pushes'},
+    {title:'Dealer 21 (3+) per deck', key:'dealer_21_3plus'},
+    {title:'Player win % per deck', key:'win_pct', buckets:[0,20,30,40,45,50,55,60,70,80,101],
+      labels:['<20','20s','30s','40-44','45-49','50-54','55-59','60s','70s','80+']},
+    {title:'Book final bankroll per deck', key:'book_final',
+      buckets:[0,2400,2700,2900,3000,3100,3300,3600,4000,100000],
+      labels:['<2.4k','2.4-2.7','2.7-2.9','2.9-3k','3-3.1','3.1-3.3','3.3-3.6','3.6-4k','4k+']},
+    {title:'Sim win % per deck (weighted)', key:'sim_win_pct',
+      buckets:[0,30,38,42,46,50,54,58,66,101],
+      labels:['<30','30s','38-42','42-46','46-50','50-54','54-58','58-66','66+']},
+  ];
+  document.getElementById('dashCharts').innerHTML = charts.map(c=>{
+    let counts, labels;
+    if (c.buckets){
+      counts = new Array(c.buckets.length-1).fill(0);
+      for (const d of L){ const v = d[c.key];
+        for (let i=0;i<counts.length;i++) if (v>=c.buckets[i] && v<c.buckets[i+1]){ counts[i]++; break; } }
+      labels = c.labels;
+    } else {
+      const max = Math.min(8, Math.max(...L.map(d=>d[c.key]), 0));
+      counts = new Array(max+1).fill(0);
+      for (const d of L) counts[Math.min(d[c.key], max)]++;
+      labels = counts.map((_,i)=> i===max && max===8 ? '8+' : String(i));
+    }
+    const top = Math.max(...counts, 1);
+    return `<div class="chart"><h3>${c.title}</h3>
+      <div class="bars">${counts.map((v,i)=>
+        `<div class="bar" style="height:${Math.max(2, 100*v/top)}%" title="${labels[i]}: ${fmt(v)} decks"></div>`).join('')}</div>
+      <div class="bar-x">${labels.map(l=>`<span>${l}</span>`).join('')}</div></div>`;
+  }).join('');
+
+  // tier table
+  const tiers = new Map();
+  for (const d of L){
+    const tk = d.tier==null ? '—' : d.tier;   // generated decks may have no upstream tier
+    if (!tiers.has(tk)) tiers.set(tk, {n:0, score:0, simN:0, simWin:0, simBook:0,
+      sums:Object.fromEntries(SUMKEYS.map(k=>[k,0]))});
+    const t = tiers.get(tk); t.n++; t.score += d.optimal_final||0;
+    for (const k of SUMKEYS) t.sums[k] += d[k];
+    if (d.sim_win_pct!=null){ t.simN++; t.simWin += d.sim_win_pct; t.simBook += d.sim_book; }
+  }
+  const tb = document.querySelector('#tierTable tbody');
+  tb.innerHTML = [...tiers.keys()].sort((a,b)=>a-b).map(tier=>{
+    const t = tiers.get(tier), m = k => f2(t.sums[k]/t.n);
+    const dd = t.sums.player_wins + t.sums.dealer_wins;
+    return `<tr><td><span class="tiertag">${tier}</span></td><td>${fmt(t.n)}</td>
+      <td>${fmt(Math.round(t.score/t.n))}</td><td>${m('rounds')}</td>
+      <td>${m('player_bj')}</td><td>${m('dealer_bj')}</td><td>${m('pushes')}</td>
+      <td>${m('player_wins')}</td><td>${m('dealer_wins')}</td>
+      <td>${dd? f1(100*t.sums.player_wins/dd)+'%':'—'}</td>
+      <td>${m('player_21_3plus')}</td><td>${m('dealer_21_3plus')}</td>
+      <td>${m('splits')}</td><td>${m('doubles')}</td>
+      <td>${m('player_busts')}</td><td>${m('dealer_busts')}</td>
+      <td>${fmt(Math.round(t.sums.book_final/t.n))}</td>
+      <td>${t.simN?f1(t.simWin/t.simN)+'%':'—'}</td>
+      <td>${t.simN?fmt(Math.round(t.simBook/t.simN)):'—'}</td></tr>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────────────── database table
+const COLS = [
+  {k:'deck_id', l:'Deck ID', t:'Unique deck identifier from the source JSON — click a row to play it'},
+  {k:'tier', l:'Tier', t:'Deck quality decile 0–9 from the upstream scorer (9 = highest optimal score)'},
+  {k:'optimal_final', l:'Score', t:'optimal_final from the source JSON — upstream optimal-play score'},
+  {k:'fun_pct', l:'Fun %', t:'Fun percentile 0–100 from the source JSON — counts exciting events (splits, doubles, BJs, busts)'},
+  {k:'skill_noise', l:'Noise', t:'skill_noise from the source JSON — how much luck blurs the skill signal'},
+  {k:'rounds', l:'Rnds', t:'Rounds dealt when the active sheet plays the whole deck (the hand that starts at ≤12 cards is the last)'},
+  {k:'player_bj', l:'P BJ', t:'Player natural blackjacks (two-card 21) — settled flat +$500 before betting'},
+  {k:'dealer_bj', l:'D BJ', t:'Dealer natural blackjacks — settled flat −$250 before betting'},
+  {k:'pushes', l:'Push', t:'Tied hands, incl. both-blackjack pushes — bet returned'},
+  {k:'player_wins', l:'P W', t:'Player hands won: naturals, showdown wins, and dealer busts'},
+  {k:'dealer_wins', l:'D W', t:'Dealer hands won, incl. every player bust'},
+  {k:'win_pct', l:'Win %', t:'Player wins ÷ decided hands — pushes excluded'},
+  {k:'player_21_3plus', l:'P21+', t:'Player totals of exactly 21 made with 3+ cards (“opened a 21”)'},
+  {k:'dealer_21_3plus', l:'D21+', t:'Dealer totals of exactly 21 made with 3+ cards'},
+  {k:'splits', l:'Spl', t:'Splits taken by the active sheet (max 2 hands, split by value)'},
+  {k:'doubles', l:'Dbl', t:'Doubles taken by the active sheet (DAS allowed)'},
+  {k:'book_final', l:'Book $', t:'Final bankroll when the active sheet plays the deck — flat $100 bets from $3,000'},
+  {k:'sim_win_pct', l:'sWin %', t:'WEIGHTED win % — mean over 200 stochastic “reasonable player” runs where close calls (16v10 hit/stand, skipped doubles/splits, soft 18…) are randomized. More robust than the single book line'},
+  {k:'sim_win_std', l:'±', t:'Spread (std dev) of the weighted win % across the 200 runs — high = the deck swings a lot with play style'},
+  {k:'sim_pw', l:'sP W', t:'Weighted mean player hands won per deck (200 reasonable-player runs)'},
+  {k:'sim_dw', l:'sD W', t:'Weighted mean dealer hands won per deck (200 reasonable-player runs)'},
+  {k:'sim_push', l:'sPush', t:'Weighted mean pushes per deck (200 reasonable-player runs)'},
+  {k:'sim_book', l:'sBook $', t:'Weighted mean final bankroll over 200 reasonable-player runs (flat $100 bets)'},
+  {k:'sim_mix_book', l:'sMix $', t:'Weighted mean final bankroll when the player bets a random affordable chip from 200/350/500 each hand (200 runs)'},
+  {k:'sim_500_book', l:'s500 $', t:'Weighted mean final bankroll betting flat $500 every hand (200 runs)'},
+  {k:'sim_500_bust', l:'Bust %', t:'Share of the 200 flat-$500 runs that went bankrupt before the deck ended'},
+];
+function renderHead(){
+  const allPage = PAGE_IDS.length && PAGE_IDS.every(id=>state.selected.has(id));
+  document.getElementById('deckHead').innerHTML =
+    `<th class="chk"><input type="checkbox" id="selPage" title="select every row on this page" ${allPage?'checked':''}></th>` +
+    COLS.map(c=>
+    `<th data-k="${c.k}" title="${c.t} — click to sort">${c.l}${state.sortKey===c.k?` <span class="arr">${state.sortDir>0?'▲':'▼'}</span>`:''}</th>`
+  ).join('') + '<th></th>';
+}
+function renderTable(){
+  const sorted = [...FILTERED].sort((a,b)=>{
+    const va = a[state.sortKey]??-Infinity, vb = b[state.sortKey]??-Infinity;
+    return (va<vb?-1:va>vb?1:0)*state.sortDir;
+  });
+  const pages = Math.max(1, Math.ceil(sorted.length/state.pageSize));
+  state.page = Math.min(state.page, pages-1);
+  const slice = sorted.slice(state.page*state.pageSize, (state.page+1)*state.pageSize);
+  PAGE_IDS = slice.map(d=>String(d.deck_id));
+  renderHead();
+  document.querySelector('#deckTable tbody').innerHTML = slice.map(d=>{
+    const sel = state.selected.has(String(d.deck_id));
+    return `<tr class="datarow${sel?' sel':''}" data-id="${d.deck_id}">
+      <td class="chk"><input type="checkbox" data-sel="${d.deck_id}" ${sel?'checked':''}></td>
+      <td class="id">${d.deck_id}</td><td><span class="tiertag">${d.tier??'—'}</span></td>
+      <td>${fmt(d.optimal_final)}</td><td>${d.fun_pct??'—'}</td><td class="dim">${d.skill_noise??'—'}</td>
+      <td class="dim">${d.rounds}</td>
+      <td>${d.player_bj}</td><td>${d.dealer_bj}</td><td>${d.pushes}</td>
+      <td>${d.player_wins}</td><td>${d.dealer_wins}</td><td>${d.win_pct}%</td>
+      <td>${d.player_21_3plus}</td><td>${d.dealer_21_3plus}</td>
+      <td class="dim">${d.splits}</td><td class="dim">${d.doubles}</td>
+      <td>${fmt(d.book_final)}</td>
+      <td>${d.sim_win_pct==null?'—':d.sim_win_pct+'%'}</td>
+      <td class="dim">${d.sim_win_std==null?'—':'±'+d.sim_win_std}</td>
+      <td>${d.sim_pw==null?'—':d.sim_pw}</td><td>${d.sim_dw==null?'—':d.sim_dw}</td>
+      <td>${d.sim_push==null?'—':d.sim_push}</td>
+      <td>${d.sim_book==null?'—':fmt(d.sim_book)}</td>
+      <td>${d.sim_mix_book==null?'—':fmt(d.sim_mix_book)}</td>
+      <td>${d.sim_500_book==null?'—':fmt(d.sim_500_book)}</td>
+      <td>${d.sim_500_bust==null?'—':d.sim_500_bust+'%'}</td>
+      <td><button class="playbtn">Play ▸</button></td></tr>`;}).join('');
+  document.getElementById('matchCount').textContent = `${fmt(sorted.length)} match${sorted.length===1?'':'es'}`;
+  document.getElementById('pageInfo').textContent = `page ${state.page+1} / ${pages}`;
+  document.getElementById('prevPg').disabled = state.page===0;
+  document.getElementById('nextPg').disabled = state.page>=pages-1;
+  updateSelUI();
+}
+function updateSelUI(){
+  const n = state.selected.size;
+  document.getElementById('selCount').textContent = n ? `· ${fmt(n)} selected` : '';
+  const b = document.getElementById('exportSelBtn');
+  b.disabled = !n;
+  b.textContent = n ? `Export selected (${fmt(n)})` : 'Export selected';
+  const r = document.getElementById('removeSel');
+  r.disabled = !n;
+  r.textContent = n ? `Remove selected (${fmt(n)})` : 'Remove selected';
+  const jb = document.getElementById('addJourneyBtn');
+  jb.disabled = !n;
+  jb.textContent = n ? `Add to journey (${fmt(n)})` : 'Add to journey';
+  document.getElementById('selAllF').textContent = `Select all (${fmt(FILTERED.length)})`;
+  // Gmail-style: full page selected but more matches exist → offer to select them all
+  const banner = document.getElementById('selBanner');
+  const allPage = PAGE_IDS.length && PAGE_IDS.every(id=>state.selected.has(id));
+  const moreToSelect = FILTERED.some(d=>!state.selected.has(String(d.deck_id)));
+  if (allPage && moreToSelect){
+    banner.innerHTML = `All <b>${fmt(PAGE_IDS.length)}</b> decks on this page are selected.
+      <button id="selAllBanner">Select all ${fmt(FILTERED.length)} matching decks</button>`;
+    banner.style.display = 'flex';
+  } else banner.style.display = 'none';
+}
+function toggleSel(id, on){
+  id = String(id);
+  if (on === undefined) on = !state.selected.has(id);
+  if (on) state.selected.add(id); else state.selected.delete(id);
+}
+document.getElementById('deckHead').addEventListener('click', e=>{
+  const th = e.target.closest('th'); if (!th||!th.dataset.k) return;
+  if (state.sortKey===th.dataset.k) state.sortDir*=-1;
+  else { state.sortKey=th.dataset.k; state.sortDir=-1; }
+  renderTable();
+});
+document.querySelector('#deckTable tbody').addEventListener('click', e=>{
+  const cb = e.target.closest('input[data-sel]');
+  if (cb){ toggleSel(cb.dataset.sel, cb.checked);
+    cb.closest('tr').classList.toggle('sel', cb.checked); renderHead(); updateSelUI(); return; }
+  const tr = e.target.closest('tr.datarow'); if (!tr) return;
+  loadDeckById(tr.dataset.id); switchView('play');
+});
+document.getElementById('deckHead').addEventListener('change', e=>{
+  if (e.target.id !== 'selPage') return;
+  for (const id of PAGE_IDS) toggleSel(id, e.target.checked);
+  renderTable();
+});
+document.getElementById('selAllF').onclick = ()=>{
+  for (const d of FILTERED) state.selected.add(String(d.deck_id));
+  renderTable();
+};
+document.getElementById('selBanner').addEventListener('click', e=>{
+  if (e.target.id !== 'selAllBanner') return;
+  for (const d of FILTERED) state.selected.add(String(d.deck_id));
+  renderTable();
+});
+document.getElementById('selNone').onclick = ()=>{ state.selected.clear(); renderTable(); };
+// ── persistence API (needs server.js — started by start.command) ──
+const API={ok:false,archived:0};
+function updateDbButtons(){
+  const r=document.getElementById('restoreDb');
+  r.style.display=API.ok&&API.archived?'inline-block':'none';
+  r.textContent=`Restore archived (${fmt(API.archived)})`;
+}
+// Remove selected = permanent delete from the database (archived, restorable).
+// Falls back to session-only removal when the save API isn't running.
+document.getElementById('removeSel').onclick = async()=>{
+  const n=state.selected.size;
+  if(!n)return;
+  if(!API.ok){
+    if(!confirm(`The save API is not running (start the app with start.command to delete permanently).\n\nRemove ${fmt(n)} deck${n>1?'s':''} from this session's view only?`))return;
+    for(const id of state.selected)removedIds.add(id);
+    state.selected.clear();
+    renderSmartChips(); state.page=0; refresh();
+    return;
+  }
+  if(!confirm(`Permanently delete ${fmt(n)} deck${n>1?'s':''} from the database?\n\nThey will no longer appear anywhere — data.js and deck_stats.json are rewritten and decks.sqlite is rebuilt. The decks are archived to removed_decks.json and can be restored with "Restore archived".`))return;
+  const btn=document.getElementById('removeSel');
+  btn.disabled=true;btn.textContent='Deleting…';
+  try{
+    const r=await fetch('/api/delete-decks',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({deck_ids:[...state.selected]})});
+    const j=await r.json();
+    if(!j.ok)throw new Error(j.error||'delete failed');
+    const gone=new Set([...state.selected]);
+    DECKS=DECKS.filter(d=>!gone.has(String(d.deck_id)));
+    for(const id of gone)BYID.delete(id);
+    state.selected.clear();
+    API.archived=j.archived||API.archived;
+    updateDeckCounts();renderSmartChips();state.page=0;refresh();
+    setMsgDb(`Deleted ${fmt(j.deleted)} decks — database now holds ${fmt(j.remaining)} (${j.sqlite}).`);
+  }catch(e){
+    alert('Delete failed: '+e.message);
+  }
+  btn.disabled=!state.selected.size;
+  updateSelUI();updateDbButtons();
+};
+function refreshPing(){
+  fetch('/api/ping').then(r=>r.json()).then(j=>{
+    API.ok=!!j.ok;API.archived=j.archived||0;updateDbButtons();
+  }).catch(()=>{API.ok=false;updateDbButtons();});
+}
+function updateDeckCounts(){
+  document.getElementById('nDecks').textContent=fmt(DECKS.length);
+  document.getElementById('stratN').textContent=fmt(DECKS.length);
+}
+document.getElementById('restoreDb').onclick=async()=>{
+  if(!API.ok||!API.archived)return;
+  if(!confirm(`Restore all ${fmt(API.archived)} archived decks into the database?`))return;
+  const btn=document.getElementById('restoreDb');btn.disabled=true;btn.textContent='Restoring…';
+  try{
+    const r=await fetch('/api/restore-all',{method:'POST'});
+    const j=await r.json();
+    if(!j.ok)throw new Error('restore failed');
+    alert(`Restored ${fmt(j.restored)} decks — reloading with the full database.`);
+    location.reload();
+  }catch(e){
+    alert('Restore failed: '+e.message);
+    btn.disabled=false;updateDbButtons();
+  }
+};
+function setMsgDb(t){
+  const el=document.getElementById('matchCount');
+  const old=el.textContent;
+  el.textContent=t;
+  setTimeout(()=>{if(el.textContent===t)renderTable();},4000);
+}
+document.getElementById('prevPg').onclick = ()=>{ state.page--; renderTable(); };
+document.getElementById('nextPg').onclick = ()=>{ state.page++; renderTable(); };
+document.getElementById('clearF').onclick = ()=>{
+  for (const k in fstate) delete fstate[k];
+  idQuery=''; document.querySelectorAll('#fgrid input').forEach(i=>i.value='');
+  smartFilters=[]; removedIds.clear(); renderSmartChips();
+  state.page=0; refresh();
+};
+document.getElementById('smartGo').onclick=applySmart;
+document.getElementById('smartQ').addEventListener('keydown',e=>{if(e.key==='Enter')applySmart();});
+document.getElementById('smartChips').addEventListener('click',e=>{
+  const r=e.target.closest('b[data-restore]');
+  if(r){ removedIds.clear(); renderSmartChips(); state.page=0; refresh(); return; }
+  const x=e.target.closest('b[data-si]'); if(!x)return;
+  smartFilters.splice(+x.dataset.si,1);
+  renderSmartChips(); state.page=0; refresh();
+});
+
+// export — same structure as source JSON
+const EXPORT_KEYS = ['deck_id','cards','optimal_final','tier','fun_raw','fun_pct','mean_std','skill_noise'];
+const STAT_EXPORT = ['rounds','hands_played','player_bj','dealer_bj','splits','doubles','pairs_dealt',
+  'player_wins','dealer_wins','pushes','dealer_21_3plus','player_21_3plus','dealer_busts','player_busts',
+  'book_final','win_pct','pd_ratio',
+  'sim_win_pct','sim_win_std','sim_pw','sim_dw','sim_push','sim_pbj','sim_dbj',
+  'sim_p21','sim_d21','sim_pbust','sim_dbust','sim_book','sim_book_std',
+  'sim_mix_book','sim_mix_std','sim_mix_bust','sim_500_book','sim_500_std','sim_500_bust'];
+function exportDecks(list, name){
+  const withStats = document.getElementById('expStats').checked;
+  const out = list.map(d=>{
+    const o = {}; for (const k of EXPORT_KEYS) o[k]=d[k];
+    if (d.generated_from) o.generated_from = d.generated_from;
+    if (withStats){ o.stats = {}; for (const k of STAT_EXPORT) o.stats[k]=d[k]; }
+    return o;
+  });
+  downloadJSON(out, name);
+  return out.length;
+}
+function downloadJSON(out, name){
+  const blob = new Blob([JSON.stringify(out)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+document.getElementById('exportBtn').onclick = ()=>
+  exportDecks(FILTERED, `decks_filtered_${FILTERED.length}.json`);
+document.getElementById('exportSelBtn').onclick = ()=>{
+  const list = [...state.selected].map(id=>BYID.get(id)).filter(Boolean);
+  exportDecks(list, `decks_selected_${list.length}.json`);
+};
+
+// ─────────────────────────────────────────────────────── view switching
+function switchView(v){
+  state.view = v;
+  document.querySelectorAll('nav button[data-v]').forEach(b=>b.classList.toggle('on', b.dataset.v===v));
+  document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on', s.id==='v-'+v));
+  if (v==='journey' && typeof journeyRender==='function') journeyRender();
+  if (v==='missions' && typeof missionsRender==='function') missionsRender();
+}
+document.querySelectorAll('nav button[data-v]').forEach(b=> b.onclick = ()=>switchView(b.dataset.v));
+
+// ═══════════════════════════════════════════════════════ PLAY ENGINE
+// exact port of blackjack_deck_machine.html (S17 fixed to match the database)
+const RANKVAL={A:11,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,T:10,J:10,Q:10,K:10};
+const DISP={T:'10'}; const disp=c=>DISP[c]||c;
+function total(cards){let t=0,a=0;for(const c of cards){t+=RANKVAL[c];if(c==='A')a++;}
+  while(t>21&&a>0){t-=10;a--;}return[t,a>0&&t<=21];}
+function isBJ(c){return c.length===2&&total(c)[0]===21;}
+function strategy(p,up,cd,cs,das=true){
+  const n=p.length,[t,soft]=total(p);
+  if(cs&&n===2&&RANKVAL[p[0]]===RANKVAL[p[1]]){
+    const r=RANKVAL[p[0]],pr=p[0];
+    if(pr==='A')return'P'; if(r===10)return'S';
+    if(r===9)return[2,3,4,5,6,8,9].includes(up)?'P':'S';
+    if(r===8)return'P'; if(r===7)return up<=7?'P':'H';
+    if(r===6)return(up<=6&&(das||up>=3))?'P':'H';
+    if(r===5)return(up<=9&&cd)?'D':'H';
+    if(r===4)return(das&&(up===5||up===6))?'P':'H';
+    if(r===2||r===3)return up<=7?'P':'H';
+  }
+  if(soft){
+    if(t>=19)return'S';
+    if(t===18){if([3,4,5,6].includes(up))return cd?'D':'S';if([2,7,8].includes(up))return'S';return'H';}
+    if(t===17)return([3,4,5,6].includes(up)&&cd)?'D':'H';
+    if(t===15||t===16)return([4,5,6].includes(up)&&cd)?'D':'H';
+    if(t===13||t===14)return([5,6].includes(up)&&cd)?'D':'H';
+    return'H';
+  }
+  if(t>=17)return'S'; if(t>=13)return up<=6?'S':'H';
+  if(t===12)return[4,5,6].includes(up)?'S':'H';
+  if(t===11)return cd?'D':'H'; if(t===10)return(up<=9&&cd)?'D':'H';
+  if(t===9)return([3,4,5,6].includes(up)&&cd)?'D':'H'; return'H';
+}
+const ACT={H:'Hit',S:'Stand',D:'Double',P:'Split'};
+
+// ── strategy sheets (cheat sheets) ──────────────────────────────────
+// Codes: H, S, P, D/H, D/S, P/H, R/H. With 3+ cards (or when the action is
+// unavailable) each code falls back to its second letter; R/H always plays
+// Hit because this game has no surrender.
+const UPS=[2,3,4,5,6,7,8,9,10,11];
+const rw=s=>s.trim().split(/\s+/);
+const H10=rw('H H H H H H H H H H'),S10=rw('S S S S S S S S S S'),P10=rw('P P P P P P P P P P');
+const SHEET_BOOK={name:'Book basic',
+  hard:{5:H10,6:H10,7:H10,8:H10,
+    9:rw('H D/H D/H D/H D/H H H H H H'),
+    10:rw('D/H D/H D/H D/H D/H D/H D/H D/H H H'),
+    11:rw('D/H D/H D/H D/H D/H D/H D/H D/H D/H D/H'),
+    12:rw('H H S S S H H H H H'),
+    13:rw('S S S S S H H H H H'),14:rw('S S S S S H H H H H'),
+    15:rw('S S S S S H H H H H'),16:rw('S S S S S H H H H H'),17:S10},
+  soft:{12:H10,
+    13:rw('H H H D/H D/H H H H H H'),14:rw('H H H D/H D/H H H H H H'),
+    15:rw('H H D/H D/H D/H H H H H H'),16:rw('H H D/H D/H D/H H H H H H'),
+    17:rw('H D/H D/H D/H D/H H H H H H'),
+    18:rw('S D/S D/S D/S D/S S S H H H'),19:S10,20:S10},
+  pairs:{'2':rw('P P P P P P H H H H'),'3':rw('P P P P P P H H H H'),
+    '4':rw('H H H P P H H H H H'),
+    '5':rw('D/H D/H D/H D/H D/H D/H D/H D/H H H'),
+    '6':rw('P P P P P H H H H H'),'7':rw('P P P P P P H H H H'),
+    '8':P10,'9':rw('P P P P P S P P S S'),'10':S10,'A':P10}};
+const SHEET_DUEL={name:'DUEL chart',
+  hard:{5:H10,6:H10,7:H10,8:H10,
+    9:rw('H D/H D/H D/H D/H H H H H H'),
+    10:rw('D/H D/H D/H D/H D/H D/H D/H D/H H H'),
+    11:rw('D/H D/H D/H D/H D/H D/H D/H D/H D/H D/H'),
+    12:rw('H H S S S H H H H H'),
+    13:rw('S S S S S H H H H H'),14:rw('S S S S S H H H H H'),
+    15:rw('S S S S S H H H R/H H'),
+    16:rw('S S S S S H H R/H R/H R/H'),17:S10},
+  soft:{12:H10,
+    13:rw('H H H D/H D/H H H H H H'),14:rw('H H H D/H D/H H H H H H'),
+    15:rw('H H D/H D/H D/H H H H H H'),16:rw('H H D/H D/H D/H H H H H H'),
+    17:rw('H D/H D/H D/H D/H H H H H H'),
+    18:rw('S D/S D/S D/S D/S S S H H H'),19:S10,20:S10},
+  pairs:{'2':rw('P/H P/H P P P P H H H H'),'3':rw('P/H P/H P P P P H H H H'),
+    '4':rw('H H H P/H P/H H H H H H'),
+    '5':rw('D/H D/H D/H D/H D/H D/H D/H D/H H H'),
+    '6':rw('P/H P P P P H H H H H'),'7':rw('P P P P P P H H H H'),
+    '8':P10,'9':rw('P P P P P S P P S S'),'10':S10,'A':P10}};
+function resolveCode(code,canD){
+  switch(code){
+    case 'H':return 'H'; case 'S':return 'S';
+    case 'D/H':return canD?'D':'H'; case 'D/S':return canD?'D':'S';
+    case 'R/H':return 'H';           // no surrender in the game
+    case 'P':case 'P/H':return 'P';
+  }
+  return 'H';
+}
+function makeDecide(sheet){
+  return function(cards,up,canD,canS){
+    const ui=UPS.indexOf(up);
+    if(canS&&cards.length===2&&RANKVAL[cards[0]]===RANKVAL[cards[1]]){
+      const pk=cards[0]==='A'?'A':String(RANKVAL[cards[0]]);
+      const row=sheet.pairs[pk];
+      if(row)return resolveCode(row[ui],canD);
+    }
+    const[t,soft]=total(cards);
+    let code;
+    if(soft&&t<=20){const row=sheet.soft[Math.max(12,t)];code=row?row[ui]:'S';}
+    else if(t>=18)code='S';
+    else{const row=sheet.hard[Math.max(5,t)];code=row?row[ui]:'H';}
+    return resolveCode(code,canD);
+  };
+}
+let ACTIVE={name:'Book basic',decide:makeDecide(SHEET_BOOK),h17:false};
+let CUSTOM=JSON.parse(JSON.stringify(SHEET_BOOK));CUSTOM.name='Custom';
+
+const CHIPS=[100,200,500,1000];
+const BJ_BONUS=500,BJ_PENALTY=250,LAST_AT=12,START_BANKROLL=3000,BET_BOOK=100;
+const G={deck:null,seq:[],pos:0,bankroll:START_BANKROLL,dealer:[],hideHole:true,hands:[],
+  active:0,phase:'noDeck',stats:fresh(),playerHidden:false,last:false,ended:false,token:0};
+function fresh(){return{rounds:0,player_bj:0,dealer_bj:0,splits:0,doubles:0,pairs_dealt:0,
+  player_wins:0,dealer_wins:0,pushes:0,dealer_21_3plus:0,player_21_3plus:0,
+  dealer_busts:0,player_busts:0,hands_played:0,cards_used:0,book_final:0};}
+function draw(){return G.seq[G.pos++];}
+
+// Headless classic-game rounds from an arbitrary position — EXACT mirror of
+// simulate.js gameRoundsFrom (keep in sync). Deal order P1,P2,D-up,hole; naturals
+// flat pre-bet; flat $100 book bets; split max 2 hands by value; S17; dealer skips
+// drawing when all hands bust; the round that starts at ≤12 cards is the last.
+function gameRoundsFrom(seq,startPos,startBankroll,s,decide,h17,log,betFn){
+  decide=decide||ACTIVE.decide;
+  h17=h17===undefined?ACTIVE.h17:h17;
+  let pos=startPos,bankroll=startBankroll;
+  while(true){
+    if(bankroll<=0)break;
+    if(seq.length-pos<4)break;
+    const last=(seq.length-pos)<=LAST_AT;
+    s.rounds++;
+    const p=[seq[pos++],seq[pos++]];const d=[seq[pos++],seq[pos++]];
+    const deal=log?[p[0],p[1],d[0],d[1]]:null;   // original deal (split mutates p)
+    const up=RANKVAL[d[0]];
+    const pbj=total(p)[0]===21,dbj=total(d)[0]===21;
+    if(pbj||dbj){
+      s.hands_played++;
+      if(pbj)s.player_bj++;if(dbj)s.dealer_bj++;
+      let res;
+      if(pbj&&dbj){s.pushes++;res='push — both blackjack';}
+      else if(pbj){s.player_wins++;bankroll+=BJ_BONUS;res=`WIN — blackjack +$${BJ_BONUS}`;}
+      else{s.dealer_wins++;bankroll=Math.max(0,bankroll-BJ_PENALTY);res=`lose — dealer blackjack −$${BJ_PENALTY}`;}
+      if(log)log.push({deal,hands:[{cards:p.slice(),bet:0,acts:[],res}],dealer:d.slice(),bk:bankroll,last});
+      if(last)break;
+      continue;
+    }
+    if(RANKVAL[p[0]]===RANKVAL[p[1]])s.pairs_dealt++;
+    const bet=betFn?betFn(bankroll):Math.min(BET_BOOK,bankroll);
+    bankroll-=bet;
+    const hands=[{cards:p,bet,doubled:false,splitAce:false,acts:[]}];
+    for(let i=0;i<hands.length;i++){
+      const h=hands[i];
+      while(true){
+        if(h.splitAce)break;
+        const t=total(h.cards)[0];
+        if(t>=21)break;
+        const canS=hands.length<2&&h.cards.length===2&&
+          RANKVAL[h.cards[0]]===RANKVAL[h.cards[1]]&&
+          bankroll>=h.bet&&seq.length-pos>=2;
+        const canD=h.cards.length===2&&!h.doubled&&
+          bankroll>=h.bet&&pos<seq.length;
+        const a=decide(h.cards,up,canD,canS);
+        if(a==='P'&&canS){
+          s.splits++;bankroll-=h.bet;
+          const isAces=h.cards[0]==='A';
+          const cSplit=h.cards.pop();
+          const nh={cards:[cSplit],bet:h.bet,doubled:false,splitAce:isAces,acts:[]};
+          h.cards.push(seq[pos++]);nh.cards.push(seq[pos++]);
+          h.acts.push('split');
+          hands.push(nh);
+          if(isAces){h.splitAce=true;break;}
+          continue;
+        }
+        if(a==='D'&&canD){
+          s.doubles++;bankroll-=h.bet;h.bet*=2;h.doubled=true;
+          const c=seq[pos++];h.cards.push(c);h.acts.push('double→'+disp(c));break;
+        }
+        if(a==='H'){
+          if(pos>=seq.length)break;
+          const c=seq[pos++];h.cards.push(c);h.acts.push('hit→'+disp(c));continue;
+        }
+        h.acts.push('stand');break;
+      }
+    }
+    const allBust=hands.every(h=>total(h.cards)[0]>21);
+    if(!allBust)while(pos<seq.length){
+      const[dv,dsoft]=total(d);
+      if(dv>17)break;
+      if(dv===17&&!(dsoft&&h17))break;   // H17: dealer hits soft 17
+      d.push(seq[pos++]);
+    }
+    const dt=total(d)[0];const dbust=dt>21;
+    if(dbust)s.dealer_busts++;
+    else if(dt===21&&d.length>=3)s.dealer_21_3plus++;
+    for(const h of hands){
+      s.hands_played++;
+      const t=total(h.cards)[0];
+      if(t>21){s.player_busts++;s.dealer_wins++;h.res='BUST — lose';continue;}
+      if(t===21&&h.cards.length>=3)s.player_21_3plus++;
+      if(dbust||t>dt){s.player_wins++;bankroll+=h.bet*2;h.res=dbust?'WIN — dealer bust':'WIN';}
+      else if(t<dt){s.dealer_wins++;h.res='lose';}
+      else{s.pushes++;bankroll+=h.bet;h.res='push';}
+    }
+    if(log)log.push({deal,hands:hands.map(h=>({cards:h.cards.slice(),bet:h.bet,acts:h.acts,res:h.res})),
+      dealer:d.slice(),bk:bankroll,last});
+    if(last)break;
+  }
+  s.cards_used=pos;
+  s.book_final=bankroll;
+  return s;
+}
+
+function loadDeckById(id){
+  const d = BYID.get(String(id).trim());
+  const err = document.getElementById('lookupErr');
+  if (!d){ err.textContent = 'No deck with that ID in the database.'; return false; }
+  err.textContent = '';
+  G.deck=d; G.seq=d.cards.split(''); G.pos=0; G.stats=fresh();
+  G.dealer=[]; G.hands=[]; G.active=0; G.phase='idle';
+  G.bankroll=START_BANKROLL; G.playerHidden=false; G.last=false; G.ended=false; G.token++;
+  document.getElementById('stage').style.display='block';
+  document.getElementById('deckbar').style.display='flex';
+  document.getElementById('deckbarEmpty').style.display='none';
+  document.getElementById('curId').textContent=d.deck_id;
+  document.getElementById('curTier').textContent=d.tier??'—';
+  document.getElementById('curScore').textContent=fmt(d.optimal_final);
+  document.getElementById('curFun').textContent=d.fun_pct==null?'—':d.fun_pct+'%';
+  document.getElementById('curSim').textContent=
+    d.sim_win_pct==null?'—':`${d.sim_win_pct}% ±${d.sim_win_std}`;
+  const bo=document.getElementById('betOutlook');
+  if(d.sim_book!=null&&d.sim_mix_book!=null){
+    bo.innerHTML=`Bankroll outlook (200-run weighted sim, $3,000 start): `+
+      `flat $100 → <b style="color:var(--gold)">$${fmt(d.sim_book)}</b> ±${fmt(d.sim_book_std)} · `+
+      `chip mix 200/350/500 → <b style="color:var(--gold)">$${fmt(d.sim_mix_book)}</b> ±${fmt(d.sim_mix_std)}`+
+      `${d.sim_mix_bust?` (bust ${d.sim_mix_bust}%)`:''} · `+
+      `flat $500 → <b style="color:var(--gold)">$${fmt(d.sim_500_book)}</b> ±${fmt(d.sim_500_std)}`+
+      `${d.sim_500_bust?` <span style="color:var(--lose)">(bust ${d.sim_500_bust}%)</span>`:''}`;
+    bo.style.display='block';
+  }else bo.style.display='none';
+  // journey position chip
+  const jIdx=JOURNEY.list.findIndex(x=>!x.res&&String(x.id)===String(d.deck_id));
+  const jc=document.getElementById('curJourney');
+  if(jIdx>-1){
+    jc.style.display='';
+    document.getElementById('curJourneyTxt').textContent=`${jIdx+1} / ${JOURNEY.list.length}`;
+  }else jc.style.display='none';
+  document.getElementById('afterPanel').style.display='none';
+  document.getElementById('replayPanel').style.display='none';
+  setMsg('Deck loaded. Deal the first round.','');
+  render();
+  return true;
+}
+function randomDeck(){
+  const pool = FILTERED.length ? FILTERED : DECKS;
+  const d = pool[Math.floor(Math.random()*pool.length)];
+  loadDeckById(d.deck_id);
+}
+
+function activeHand(){return G.hands[G.active];}
+
+// ── round lifecycle (mirrors BlackjackViewModel: dealing → betting → reveal →
+//    playerTurn → flip → dealerTurn → result) ──
+function startRound(){
+  if(G.ended)return;
+  if(G.phase!=='idle'&&G.phase!=='result')return;
+  if(G.bankroll<=0){matchEnd('BANKRUPT');return;}
+  if(G.seq.length-G.pos<4){matchEnd('DECK EMPTY');return;}
+  G.token++;
+  G.last=(G.seq.length-G.pos)<=LAST_AT;
+  G.stats.rounds++;
+  // deal order P1 → P2 → dealer-up → hole (PT-69 §4.2)
+  const p=[draw(),draw()];G.dealer=[draw(),draw()];
+  G.hands=[{cards:p,bet:0,doubled:false,splitAce:false,stood:false,outcome:null}];
+  G.active=0;G.hideHole=true;G.playerHidden=true;
+  const pbj=total(p)[0]===21,dbj=total(G.dealer)[0]===21;
+  if(pbj||dbj){
+    // dealer-peek: naturals settle flat BEFORE betting — no stake taken
+    G.playerHidden=false;G.hideHole=false;
+    G.stats.hands_played++;
+    if(pbj)G.stats.player_bj++;if(dbj)G.stats.dealer_bj++;
+    const h=G.hands[0];
+    if(pbj&&dbj){h.outcome='push';G.stats.pushes++;setMsg('Both blackjack — push, no points change.','push');}
+    else if(pbj){h.outcome='bj';G.stats.player_wins++;G.bankroll+=BJ_BONUS;
+      setMsg(`BLACKJACK! +$${BJ_BONUS} flat bonus.`,'win');}
+    else{h.outcome='dealerBJ';G.stats.dealer_wins++;G.bankroll=Math.max(0,G.bankroll-BJ_PENALTY);
+      setMsg(`Dealer blackjack — −$${BJ_PENALTY} flat penalty.`,'lose');}
+    G.phase='result';render();return;
+  }
+  if(RANKVAL[p[0]]===RANKVAL[p[1]])G.stats.pairs_dealt++;
+  G.phase='betting';
+  setMsg('Choose your bet — one of your cards is still face down.','');
+  render();
+}
+
+function chipValue(v){
+  // lowest chip floors to the remaining bankroll (always one playable bet)
+  if(v===CHIPS[0]&&G.bankroll<v)return Math.max(0,G.bankroll);
+  return v;
+}
+function selectBet(v){
+  if(G.phase!=='betting')return;
+  const val=chipValue(v);
+  if(val<=0||val>G.bankroll)return;
+  G.hands[0].bet=val;G.bankroll-=val;
+  G.playerHidden=false;                 // reveal the player's second card; hole stays down
+  const tok=G.token;
+  G.phase='reveal';setMsg('','');render();
+  setTimeout(()=>{if(G.token!==tok)return;G.phase='player';render();},400);
+}
+
+// ── action guards (same rules as the game's canHit/canDouble/canSplit) ──
+function canHit(){const h=activeHand();
+  return G.phase==='player'&&h&&!h.stood&&total(h.cards)[0]<21&&G.pos<G.seq.length;}
+function canDouble(){const h=activeHand();
+  return G.phase==='player'&&h&&h.cards.length===2&&!h.doubled&&!h.splitAce&&!h.stood
+    &&G.bankroll>=h.bet&&G.pos<G.seq.length;}
+function canSplit(){const h=activeHand();
+  return G.phase==='player'&&h&&h.cards.length===2&&!h.stood&&G.hands.length<2
+    &&RANKVAL[h.cards[0]]===RANKVAL[h.cards[1]]&&G.bankroll>=h.bet&&G.seq.length-G.pos>=2;}
+
+function hit(){
+  if(!canHit())return;
+  const h=activeHand();h.cards.push(draw());
+  const t=total(h.cards)[0];const tok=G.token;
+  if(t>21){h.outcome='bust';h.stood=true;setMsg('Bust!','lose');render();
+    setTimeout(()=>{if(G.token!==tok)return;advance();},600);}
+  else if(t===21){h.stood=true;render();
+    setTimeout(()=>{if(G.token!==tok)return;advance();},350);}
+  else render();
+}
+function stand(){
+  if(G.phase!=='player')return;
+  const h=activeHand();if(!h||h.stood)return;
+  h.stood=true;advance();
+}
+function dbl(){
+  if(!canDouble())return;
+  const h=activeHand();
+  G.stats.doubles++;
+  G.bankroll-=h.bet;h.bet*=2;h.doubled=true;
+  h.cards.push(draw());h.stood=true;
+  const t=total(h.cards)[0];const tok=G.token;
+  if(t>21){h.outcome='bust';setMsg('Bust!','lose');}
+  render();
+  setTimeout(()=>{if(G.token!==tok)return;advance();},600);
+}
+function split(){
+  if(!canSplit())return;
+  const h=activeHand();
+  G.stats.splits++;
+  const isAces=h.cards[0]==='A';
+  G.bankroll-=h.bet;
+  const cSplit=h.cards.pop();
+  const nh={cards:[cSplit],bet:h.bet,doubled:false,splitAce:isAces,stood:false,outcome:null};
+  h.splitAce=isAces;
+  h.cards.push(draw());nh.cards.push(draw());   // c1 to hand 0, c2 to hand 1 — game order
+  G.hands.push(nh);
+  const tok=G.token;
+  if(isAces){h.stood=true;nh.stood=true;render();
+    setTimeout(()=>{if(G.token!==tok)return;advance();},500);return;}
+  const t=total(h.cards)[0];
+  if(t>=21){h.stood=true;render();
+    setTimeout(()=>{if(G.token!==tok)return;advance();},350);return;}
+  render();
+}
+
+function advance(){
+  while(G.active<G.hands.length){
+    const h=G.hands[G.active];
+    if(h.stood||h.outcome){G.active++;continue;}
+    const t=total(h.cards)[0];
+    if(t>21){h.outcome='bust';h.stood=true;G.active++;continue;}
+    if(t===21){h.stood=true;G.active++;continue;}
+    render();return;                       // this hand awaits input
+  }
+  dealerPhase();
+}
+
+function dealerPhase(){
+  G.phase='dealer';G.hideHole=false;       // flip the hole card
+  render();
+  const tok=G.token;
+  const allBust=G.hands.every(h=>h.outcome==='bust');
+  setTimeout(()=>{if(G.token!==tok)return;
+    if(allBust)settle();                   // all busted — dealer never draws
+    else dealerDraw(tok);
+  },450);
+}
+function dealerDraw(tok){
+  if(G.token!==tok)return;
+  const[dt,dsoft]=total(G.dealer);
+  const draws=dt<17||(dt===17&&dsoft&&ACTIVE.h17);   // H17 option
+  if(draws&&G.pos<G.seq.length){
+    setTimeout(()=>{if(G.token!==tok)return;
+      G.dealer.push(draw());render();dealerDraw(tok);},420);
+  }else{
+    setTimeout(()=>{if(G.token!==tok)return;settle();},250);
+  }
+}
+
+function settle(){
+  const dt=total(G.dealer)[0];const dbust=dt>21;
+  if(dbust)G.stats.dealer_busts++;
+  else if(dt===21&&G.dealer.length>=3)G.stats.dealer_21_3plus++;
+  let pw=0,dw=0,pu=0;
+  for(const h of G.hands){
+    G.stats.hands_played++;
+    const t=total(h.cards)[0];
+    if(h.outcome==='bust'||t>21){h.outcome='bust';G.stats.player_busts++;G.stats.dealer_wins++;dw++;continue;}
+    if(t===21&&h.cards.length>=3)G.stats.player_21_3plus++;
+    if(dbust){h.outcome='dealerBust';G.stats.player_wins++;G.bankroll+=h.bet*2;pw++;}
+    else if(t>dt){h.outcome='win';G.stats.player_wins++;G.bankroll+=h.bet*2;pw++;}
+    else if(t<dt){h.outcome='lose';G.stats.dealer_wins++;dw++;}
+    else{h.outcome='push';G.stats.pushes++;G.bankroll+=h.bet;pu++;}
+  }
+  G.phase='result';
+  const parts=[];if(pw)parts.push(`${pw} win${pw>1?'s':''}`);
+  if(dw)parts.push(`${dw} loss${dw>1?'es':''}`);if(pu)parts.push(`${pu} push`);
+  const cls=pw>dw?'win':dw>pw?'lose':'push';
+  setMsg(`Dealer ${dbust?'busts':dt}. ${parts.join(', ')||'settled'}.`,cls);
+  render();
+}
+
+function nextHand(){
+  if(G.phase!=='result')return;
+  if(G.last){matchEnd('DECK EMPTY');return;}
+  if(G.bankroll<=0){matchEnd('BANKRUPT');return;}
+  startRound();
+}
+function dealOrNext(){
+  if(G.phase==='idle')startRound();
+  else if(G.phase==='result')nextHand();
+  else if(G.phase==='matchEnd'){
+    const e=jNextEntry?jNextEntry():null;      // Enter chains the journey
+    if(e&&BYID.has(e.id))loadDeckById(e.id);
+  }
+}
+function matchEnd(reason){
+  G.ended=true;G.phase='matchEnd';G.hideHole=false;G.playerHidden=false;
+  G.stats.cards_used=G.pos;
+  setMsg(reason==='BANKRUPT'?'Bankrupt — match over.':'Deck done — match over.',
+    reason==='BANKRUPT'?'lose':'push');
+  journeyRecord();
+  render();
+}
+function autoPlay(){
+  if(!G.deck||G.ended)return;
+  if(G.phase!=='idle'&&G.phase!=='result'){setMsg('Finish the current round first.','lose');return;}
+  if(G.phase==='result'&&G.last){matchEnd('DECK EMPTY');return;}
+  G.token++;
+  const before=G.stats.rounds;
+  gameRoundsFrom(G.seq,G.pos,G.bankroll,G.stats);   // same engine as the database
+  G.pos=G.stats.cards_used;G.bankroll=G.stats.book_final;
+  const played=G.stats.rounds-before;
+  G.ended=true;G.phase='matchEnd';G.hideHole=false;G.playerHidden=false;
+  setMsg(`Book auto-played ${played} round${played!==1?'s':''} to the end of the deck.`,'win');
+  journeyRecord();
+  render();
+}
+
+// ── play rendering ──
+function setMsg(t,cls){const m=document.getElementById('msg');m.textContent=t;
+  m.style.color=cls==='win'?'var(--win)':cls==='lose'?'var(--lose)':cls==='push'?'var(--push)':'#fff';}
+function cardEl(c,faceDown,anim){
+  const d=document.createElement('div');
+  d.className='pcard'+(faceDown?' back':'')+(anim?' dealt':'');
+  if(!faceDown)d.innerHTML=`<span class="corner">${disp(c)}</span><span class="big">${disp(c)}</span><span class="corner br">${disp(c)}</span>`;
+  return d;
+}
+function render(){
+  if(!G.deck)return;
+  document.getElementById('curPos').textContent=`${G.pos} / ${G.seq.length}`;
+  document.getElementById('curRounds').textContent=G.stats.rounds;
+
+  const tape=document.getElementById('tape');tape.innerHTML='';
+  for(let i=0;i<G.seq.length;i++){
+    const c=document.createElement('div');
+    c.className='cell'+(i<G.pos?' used':i===G.pos?' next':'');
+    c.textContent=disp(G.seq[i]);
+    tape.appendChild(c);
+  }
+
+  // status strip — bankroll / bet / net, LAST HAND flag
+  const totBet=G.hands.reduce((a,h)=>a+(h.outcome?0:h.bet),0);
+  document.getElementById('stBankroll').textContent='$'+fmt(G.bankroll);
+  document.getElementById('stBet').textContent=totBet?'$'+fmt(totBet):'—';
+  const net=G.bankroll+totBet-START_BANKROLL;
+  const stNet=document.getElementById('stNet');
+  stNet.textContent=(net>0?'+$':net<0?'−$':'$')+fmt(Math.abs(net));
+  stNet.style.color=net>0?'var(--win)':net<0?'var(--lose)':'#fff';
+  document.getElementById('stLast').style.display=
+    (G.last&&(G.phase!=='idle'))?'inline-block':'none';
+
+  // dealer — like the game: only the up-card shows while the hand is live
+  const dc=document.getElementById('dealerCards');dc.innerHTML='';
+  G.dealer.forEach((c,idx)=>{if(idx===1&&G.hideHole)return;dc.appendChild(cardEl(c,false,false));});
+  const dtEl=document.getElementById('dealerTotal');
+  if(G.dealer.length===0)dtEl.innerHTML='';
+  else if(G.hideHole)dtEl.innerHTML=`${RANKVAL[G.dealer[0]]}<span class="tag soft">+?</span>`;
+  else{const[dt]=total(G.dealer);let tg='';
+    if(dt>21)tg='<span class="tag bust">bust</span>';
+    else if(dt===21&&G.dealer.length>=3)tg='<span class="tag win">21</span>';
+    else if(dt===21&&G.dealer.length===2)tg='<span class="tag bj">blackjack</span>';
+    dtEl.innerHTML=dt+tg;}
+
+  // player hands — second card face-down until the bet is placed
+  const ph=document.getElementById('playerHands');ph.innerHTML='';
+  G.hands.forEach((h,idx)=>{
+    const wrap=document.createElement('div');
+    wrap.className='hand'+(idx===G.active&&G.phase==='player'?' active':'');
+    const cds=document.createElement('div');cds.className='cards';
+    h.cards.forEach((c,ci)=>{
+      const hide=G.playerHidden&&idx===0&&ci===1;
+      cds.appendChild(cardEl(c,hide,false));
+    });
+    wrap.appendChild(cds);
+    const tt=document.createElement('div');tt.className='htotal';
+    let inner,tag='';
+    if(G.playerHidden&&idx===0){
+      inner=`${RANKVAL[h.cards[0]]}<span class="tag soft">+?</span>`;
+    }else{
+      const[t,soft]=total(h.cards);inner=String(t);
+      if(soft&&t<21&&!h.outcome)tag+='<span class="tag soft">soft</span>';
+      if(h.outcome==='bj')tag+='<span class="tag bj">blackjack</span>';
+      else if(h.outcome==='dealerBJ')tag+='<span class="tag lose">dealer bj</span>';
+      else if(h.outcome==='win')tag+='<span class="tag win">win</span>';
+      else if(h.outcome==='dealerBust')tag+='<span class="tag win">dealer bust</span>';
+      else if(h.outcome==='lose')tag+='<span class="tag lose">lose</span>';
+      else if(h.outcome==='push')tag+='<span class="tag push">push</span>';
+      else if(h.outcome==='bust'||t>21)tag+='<span class="tag bust">bust</span>';
+    }
+    if(h.bet)tag+=`<span class="tag soft">$${fmt(h.bet)}${h.doubled?' ×2':''}</span>`;
+    tt.innerHTML=inner+tag;
+    wrap.appendChild(tt);ph.appendChild(wrap);
+  });
+
+  // controls per phase
+  const betting=G.phase==='betting';
+  const chipRow=document.getElementById('chipRow');
+  chipRow.style.display=betting?'flex':'none';
+  if(betting){
+    chipRow.innerHTML=CHIPS.map((v,i)=>{
+      const val=chipValue(v);
+      const off=val<=0||val>G.bankroll;
+      return `<button class="chipbtn" data-chip="${v}" ${off?'disabled':''}>$${val>=1000?(val/1000)+'k':val}</button>`;
+    }).join('');
+  }
+  const inPlay=G.phase==='player';
+  document.getElementById('btnHit').disabled=!canHit();
+  document.getElementById('btnStand').disabled=!(inPlay&&activeHand()&&!activeHand().stood);
+  document.getElementById('btnDouble').disabled=!canDouble();
+  document.getElementById('btnSplit').disabled=!canSplit();
+  const dealBtn=document.getElementById('btnDeal');
+  dealBtn.textContent=G.phase==='result'?'Next hand':'Deal round';
+  dealBtn.style.display=betting?'none':'';
+  dealBtn.disabled=!(G.phase==='idle'||G.phase==='result')||G.ended;
+  document.getElementById('btnAuto').disabled=
+    !((G.phase==='idle'||G.phase==='result')&&!G.ended);
+  // journey: offer the next FIFO deck once this match is over
+  const jn=jNextEntry?jNextEntry():null;
+  const jb=document.getElementById('jNextBtn');
+  if(G.phase==='matchEnd'&&jn&&BYID.has(jn.id)){
+    const idx=JOURNEY.list.indexOf(jn);
+    jb.textContent=`Next journey deck (${idx+1}/${JOURNEY.list.length}) →`;
+    jb.style.display='';
+  }else jb.style.display='none';
+
+  const hintEl=document.getElementById('hint');
+  if(inPlay&&activeHand()){const h=activeHand();const up=RANKVAL[G.dealer[0]];
+    const a=ACTIVE.decide(h.cards,up,canDouble(),canSplit());
+    hintEl.innerHTML=`${ACTIVE.name} says: <b>${ACT[a]}</b>`;}
+  else if(betting)hintEl.innerHTML='bet blind — dealer shows '+disp(G.dealer[0]);
+  else hintEl.innerHTML='';
+
+  renderSession();
+  if(G.phase==='matchEnd')showAfter();
+  else document.getElementById('afterPanel').style.display='none';
+}
+function renderSession(){
+  const s=G.stats;const dec=s.player_wins+s.dealer_wins;
+  const pw=dec?(100*s.player_wins/dec):0;
+  const ratio=s.dealer_wins?(s.player_wins/s.dealer_wins).toFixed(2):'—';
+  const net=G.bankroll-START_BANKROLL;
+  const items=[
+    ['Bankroll','$'+fmt(G.bankroll),'accent'],
+    ['Net',(net>0?'+$':net<0?'−$':'$')+fmt(Math.abs(net)),'accent'],
+    ['Rounds',s.rounds,''],['Player BJ',s.player_bj,''],['Dealer BJ',s.dealer_bj,''],
+    ['Player wins',s.player_wins,''],['Dealer wins',s.dealer_wins,''],['Pushes',s.pushes,''],
+    ['Win %',pw.toFixed(1)+'%','accent'],['P : D ratio',ratio,'accent'],
+    ['P 21 (3+)',s.player_21_3plus,''],['D 21 (3+)',s.dealer_21_3plus,''],
+    ['Splits',s.splits,''],['Doubles',s.doubles,''],
+    ['Player busts',s.player_busts,''],['Dealer busts',s.dealer_busts,''],
+  ];
+  document.getElementById('sessGrid').innerHTML=items.map(([k,v,c])=>
+    `<div class="sess ${c}"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+}
+const CMP=[['rounds','Rounds'],['player_bj','Player BJ'],['dealer_bj','Dealer BJ'],
+  ['player_wins','Player wins'],['dealer_wins','Dealer wins'],['pushes','Pushes'],
+  ['player_21_3plus','Player 21 (3+)'],['dealer_21_3plus','Dealer 21 (3+)'],
+  ['splits','Splits'],['doubles','Doubles'],['player_busts','Player busts'],['dealer_busts','Dealer busts']];
+function showAfter(){
+  const d=G.deck,s=G.stats;
+  const rows=CMP.map(([k,l])=>{
+    const you=s[k],book=d[k],df=you-book;
+    const cls=df>0?'delta-up':df<0?'delta-down':'dim';
+    return `<tr><td>${l}</td><td>${you}</td><td class="dim">${book}</td>
+      <td class="${cls}">${df>0?'+':''}${df}</td></tr>`;
+  });
+  const bd=G.bankroll-d.book_final;
+  rows.push(`<tr><td>Final bankroll</td><td>$${fmt(G.bankroll)}</td>
+    <td class="dim">$${fmt(d.book_final)}</td>
+    <td class="${bd>0?'delta-up':bd<0?'delta-down':'dim'}">${bd>0?'+':''}${fmt(bd)}</td></tr>`);
+  document.getElementById('afterBody').innerHTML=rows.join('');
+  document.getElementById('afterNote').textContent=
+    `Baseline: ${ACTIVE.name} · ${ACTIVE.h17?'H17':'S17'}, flat $100 bets from $3,000.`;
+  document.getElementById('afterPanel').style.display='block';
+}
+
+// ── play wiring ──
+document.getElementById('btnDeal').onclick=dealOrNext;
+document.getElementById('btnHit').onclick=hit;
+document.getElementById('btnStand').onclick=stand;
+document.getElementById('btnDouble').onclick=dbl;
+document.getElementById('btnSplit').onclick=split;
+document.getElementById('btnAuto').onclick=autoPlay;
+document.getElementById('chipRow').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-chip]');
+  if(b&&!b.disabled)selectBet(+b.dataset.chip);
+});
+document.getElementById('btnReset').onclick=()=>{if(G.deck)loadDeckById(G.deck.deck_id);};
+for (const [inp,btn] of [['deckIdInput','loadBtn'],['deckIdInput2','loadBtn2']]){
+  const i=document.getElementById(inp);
+  document.getElementById(btn).onclick=()=>loadDeckById(i.value);
+  i.addEventListener('keydown',e=>{if(e.key==='Enter')loadDeckById(i.value);});
+}
+document.getElementById('randBtn').onclick=randomDeck;
+document.getElementById('randBtn2').onclick=randomDeck;
+document.getElementById('replayBtn').onclick=()=>{
+  const panel=document.getElementById('replayPanel');
+  if(panel.style.display==='block'){panel.style.display='none';return;}
+  if(!G.deck)return;
+  const log=[];
+  gameRoundsFrom(G.deck.cards.split(''),0,START_BANKROLL,fresh(),ACTIVE.decide,ACTIVE.h17,log);
+  const cls=r=>/WIN/.test(r)?'delta-up':/lose|BUST/i.test(r)?'delta-down':'dim';
+  document.getElementById('replayNote').textContent=
+    `Deterministic play-through by ${ACTIVE.name} · ${ACTIVE.h17?'H17':'S17'} with flat $100 bets — `+
+    `exactly what the database stats count for this deck. Any single different decision `+
+    `(or a double you can't afford after bigger bets) shifts every following card, so your own `+
+    `session can end up with completely different hands.`;
+  document.getElementById('replayBody').innerHTML=log.map((r,i)=>{
+    const hs=r.hands.map(h=>
+      `${h.cards.map(disp).join(' ')} (${total(h.cards)[0]})${h.bet?' · $'+fmt(h.bet):''}`+
+      `${h.acts.length?' — '+h.acts.join(', '):''} → <b class="${cls(h.res)}">${h.res}</b>`
+    ).join('<br>');
+    return `<tr><td>${i+1}${r.last?' <span class="dim">(last)</span>':''}</td>`+
+      `<td style="text-align:left">${hs}</td>`+
+      `<td>${r.dealer.map(disp).join(' ')} (${total(r.dealer)[0]})</td>`+
+      `<td>$${fmt(r.bk)}</td></tr>`;
+  }).join('');
+  panel.style.display='block';
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+};
+document.addEventListener('keydown',e=>{
+  if(state.view!=='play'||e.target.tagName==='INPUT')return;
+  const k=e.key.toLowerCase();
+  if(k==='enter'){e.preventDefault();dealOrNext();}
+  else if(k==='h')hit(); else if(k==='s')stand(); else if(k==='d')dbl();
+  else if(k==='p')split(); else if(k==='a')autoPlay();
+  else if(['1','2','3','4'].includes(k)&&G.phase==='betting')selectBet(CHIPS[+k-1]);
+});
+
+// ═══════════════════════════════════════════════════════ GENERATOR
+// headless classic-game play-through — the same engine as the database & auto-play
+function profileDeck(seq){return gameRoundsFrom(seq,0,START_BANKROLL,fresh());}
+
+const GENKPIS=[
+  ['rounds','Rounds',1,false],
+  ['player_bj','Player BJ',0,true],
+  ['dealer_bj','Dealer BJ',0,true],
+  ['pushes','Pushes',1,true],
+  ['player_wins','Player wins',1,true],
+  ['dealer_wins','Dealer wins',1,true],
+  ['player_21_3plus','Player 21 (3+)',0,false],
+  ['dealer_21_3plus','Dealer 21 (3+)',0,false],
+  ['splits','Splits',1,false],
+  ['doubles','Doubles',1,false],
+  ['player_busts','Player busts',1,false],
+  ['dealer_busts','Dealer busts',1,false],
+  ['book_final','Book final $',200,false],
+];
+const GEN={ref:null,running:false,found:[],attempts:0,seen:new Set(),t0:0};
+const BASE_RANKS=(()=>{const r=[];for(let i=0;i<4;i++)r.push('A','2','3','4','5','6','7','8','9','T','J','Q','K');return r;})();
+
+function buildGenKpiUI(){
+  document.getElementById('genKpis').innerHTML=
+    `<table class="kpitable"><thead><tr><th></th><th style="text-align:left">KPI</th>
+      <th>Ref</th><th>Target</th><th>± Tolerance</th></tr></thead><tbody>`+
+    GENKPIS.map(([k,l,tol,on])=>
+      `<tr class="${on?'':'off'}">
+        <td><input type="checkbox" data-gk="${k}" ${on?'checked':''}></td>
+        <td class="kn">${l}</td>
+        <td><span class="refval" data-gref="${k}">—</span></td>
+        <td><input type="number" data-gtarget="${k}" placeholder="—" title="target value (defaults to ref)"></td>
+        <td><input type="number" min="0" value="${tol}" data-gtol="${k}"></td>
+      </tr>`).join('')+'</tbody></table>';
+  document.getElementById('genKpis').addEventListener('change',e=>{
+    const cb=e.target.closest('input[data-gk]');
+    if(cb)cb.closest('tr').classList.toggle('off',!cb.checked);
+  });
+}
+function setGenRef(d){
+  GEN.ref=d;
+  document.getElementById('genRefInfo').innerHTML = d
+    ? `Reference <b style="color:var(--gold);font-family:var(--mono)">${d.deck_id}</b> — tier ${d.tier}, score ${fmt(d.optimal_final)}, fun ${d.fun_pct}%. Check the KPIs that must match and set tolerances; you can override any target by typing a value.`
+    : 'Pick the example deck whose KPIs you want to clone.';
+  for(const [k] of GENKPIS){
+    const rv=document.querySelector(`[data-gref="${k}"]`);
+    const tv=document.querySelector(`[data-gtarget="${k}"]`);
+    if(rv)rv.textContent=d?d[k]:'—';
+    if(tv)tv.value=d?d[k]:'';
+  }
+}
+function genCriteria(){
+  const crit=[];
+  for(const [k] of GENKPIS){
+    if(!document.querySelector(`[data-gk="${k}"]`).checked)continue;
+    const tRaw=document.querySelector(`[data-gtarget="${k}"]`).value;
+    const target=tRaw===''?(GEN.ref?GEN.ref[k]:null):+tRaw;
+    if(target==null)continue;
+    const tol=+document.querySelector(`[data-gtol="${k}"]`).value||0;
+    crit.push([k,target,tol]);
+  }
+  return crit;
+}
+function newDeckId(){return Math.floor(1e15+Math.random()*8e15);}
+function shuffled(){
+  const d=BASE_RANKS.slice();
+  for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}
+  return d;
+}
+function genLoop(){
+  if(!GEN.running)return;
+  const target=+document.getElementById('genCount').value||10;
+  const cap=+document.getElementById('genCap').value||500000;
+  const crit=GEN.crit;
+  const t0=performance.now();
+  while(performance.now()-t0<40){
+    if(GEN.found.length>=target||GEN.attempts>=cap){genFinish();return;}
+    GEN.attempts++;
+    const seq=shuffled();
+    const st=profileDeck(seq);
+    let ok=true;
+    for(const[k,tgt,tol]of crit){if(Math.abs(st[k]-tgt)>tol){ok=false;break;}}
+    if(!ok)continue;
+    const cards=seq.join('');
+    if(GEN.seen.has(cards))continue;
+    GEN.seen.add(cards);
+    const ref=GEN.ref||{};
+    const dec=st.player_wins+st.dealer_wins;
+    const d={deck_id:newDeckId(),cards,
+      optimal_final:ref.optimal_final??null,tier:ref.tier??null,fun_raw:ref.fun_raw??null,
+      fun_pct:ref.fun_pct??null,mean_std:ref.mean_std??null,skill_noise:ref.skill_noise??null,
+      generated_from:ref.deck_id??null,...st,
+      win_pct:dec?+(100*st.player_wins/dec).toFixed(1):0,
+      pd_ratio:st.dealer_wins?+(st.player_wins/st.dealer_wins).toFixed(3):null};
+    GEN.found.push(d);
+    BYID.set(String(d.deck_id),d);
+  }
+  updateGenUI(false);
+  setTimeout(genLoop,0);
+}
+function genFinish(){
+  GEN.running=false;
+  document.getElementById('genRun').disabled=false;
+  document.getElementById('genStop').disabled=true;
+  updateGenUI(true);
+}
+function updateGenUI(done){
+  const target=+document.getElementById('genCount').value||10;
+  const cap=+document.getElementById('genCap').value||500000;
+  const secs=(performance.now()-GEN.t0)/1000;
+  const rate=secs>0?Math.round(GEN.attempts/secs/1000):0;
+  document.getElementById('genBar').style.width=
+    Math.min(100,Math.max(100*GEN.found.length/target,100*GEN.attempts/cap))+'%';
+  document.getElementById('genStat').innerHTML=
+    `<b>${GEN.found.length}</b>/${target} found · ${fmt(GEN.attempts)} attempts · ${rate}k/s`+
+    (done?(GEN.found.length>=target?' · done':' · stopped — loosen tolerances or raise the cap'):'');
+  document.getElementById('genFound').textContent=GEN.found.length?`${GEN.found.length} decks`:'';
+  document.getElementById('genExport').disabled=!GEN.found.length;
+  const unsaved=GEN.found.filter(d=>!d._saved).length;
+  const addBtn=document.getElementById('genAddDb');
+  addBtn.disabled=!unsaved;
+  addBtn.textContent=unsaved?`Add to database (${unsaved})`:'Add to database';
+  document.querySelector('#genTable tbody').innerHTML=GEN.found.map(d=>
+    `<tr class="datarow" data-id="${d.deck_id}">
+      <td class="id">${d.deck_id}</td><td class="dim">${d.rounds}</td>
+      <td>${d.player_bj}</td><td>${d.dealer_bj}</td><td>${d.pushes}</td>
+      <td>${d.player_wins}</td><td>${d.dealer_wins}</td><td>${d.win_pct}%</td>
+      <td>${d.player_21_3plus}</td><td>${d.dealer_21_3plus}</td>
+      <td class="dim">${d.splits}</td><td class="dim">${d.doubles}</td>
+      <td>${fmt(d.book_final)}</td>
+      <td><button class="playbtn">Play ▸</button></td></tr>`).join('');
+}
+document.getElementById('genRun').onclick=()=>{
+  if(GEN.running)return;
+  GEN.crit=genCriteria();
+  if(!GEN.crit.length){document.getElementById('genStat').textContent='check at least one KPI (or load a reference deck)';return;}
+  GEN.running=true;GEN.t0=performance.now();GEN.attempts=0;
+  document.getElementById('genRun').disabled=true;
+  document.getElementById('genStop').disabled=false;
+  genLoop();
+};
+document.getElementById('genStop').onclick=genFinish;
+document.getElementById('genClear').onclick=()=>{
+  GEN.found=[];GEN.seen.clear();GEN.attempts=0;updateGenUI(false);
+  document.getElementById('genStat').textContent='idle';
+  document.getElementById('genBar').style.width='0%';
+};
+document.getElementById('genExport').onclick=()=>
+  exportDecks(GEN.found,`decks_generated_${GEN.found.length}.json`);
+document.getElementById('genAddDb').onclick=async()=>{
+  const list=GEN.found.filter(d=>!d._saved);
+  if(!list.length)return;
+  if(!API.ok){
+    alert('The save API is not running. Start the app with start.command (node server.js) to add generated decks to the database — right now they live only in this session.');
+    return;
+  }
+  const btn=document.getElementById('genAddDb');
+  btn.disabled=true;btn.textContent='Saving…';
+  try{
+    const r=await fetch('/api/add-decks',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({decks:list})});
+    const j=await r.json();
+    if(!j.ok)throw new Error(j.error||'save failed');
+    for(const d of list){
+      d._saved=true;
+      for(const k of ['sim_win_pct','sim_win_std','sim_pw','sim_dw','sim_push','sim_pbj','sim_dbj',
+        'sim_p21','sim_d21','sim_pbust','sim_dbust','sim_book','sim_book_std',
+        'sim_mix_book','sim_mix_std','sim_mix_bust','sim_500_book','sim_500_std','sim_500_bust'])
+        if(d[k]===undefined)d[k]=null;
+      if(!BYID.has(String(d.deck_id)))BYID.set(String(d.deck_id),d);
+      if(!DECKS.some(x=>String(x.deck_id)===String(d.deck_id)))DECKS.push(d);
+    }
+    updateDeckCounts();refresh();updateGenUI(false);
+    document.getElementById('genStat').innerHTML=
+      `<b>${j.added}</b> deck${j.added!==1?'s':''} saved to the database (${j.sqlite||'no rebuild needed'}) — now permanent and playable any time. Weighted sim columns fill on the next <code>node simulate.js</code> run.`;
+  }catch(e){
+    alert('Save failed: '+e.message);
+    updateGenUI(false);
+  }
+};
+document.getElementById('genRefLoad').onclick=()=>{
+  const d=BYID.get(document.getElementById('genRefInput').value.trim());
+  if(d)setGenRef(d);
+  else document.getElementById('genRefInfo').textContent='No deck with that ID in the database.';
+};
+document.getElementById('genFromPlay').onclick=()=>{
+  if(G.deck){document.getElementById('genRefInput').value=G.deck.deck_id;setGenRef(G.deck);}
+  switchView('gen');
+};
+document.querySelector('#genTable tbody').addEventListener('click',e=>{
+  const tr=e.target.closest('tr.datarow');if(!tr)return;
+  loadDeckById(tr.dataset.id);switchView('play');
+});
+
+// ═══════════════════════════════════════════════════════ JOURNEY
+const JKEY='deckroom_journey';
+let JOURNEY=(()=>{ try{
+    const j=JSON.parse(localStorage.getItem(JKEY));
+    if(j&&Array.isArray(j.list))return {list:j.list,model:j.model||'book'};
+  }catch(e){} return {list:[],model:'book'}; })();
+function jSave(){ try{localStorage.setItem(JKEY,JSON.stringify(JOURNEY));}catch(e){} }
+function jNextEntry(){ return JOURNEY.list.find(e=>!e.res); }
+function jModelFields(){
+  return JOURNEY.model==='mix'?['sim_mix_book','sim_mix_std']
+    :JOURNEY.model==='500'?['sim_500_book','sim_500_std']
+    :['sim_book','sim_book_std'];
+}
+function jAdd(ids){
+  let added=0;
+  for(const id of ids){
+    const s=String(id).trim(); if(!s)continue;
+    if(!BYID.has(s))continue;
+    JOURNEY.list.push({id:s,res:null}); added++;
+  }
+  if(added){jSave();journeyRender();}
+  return added;
+}
+
+// ── missions (Blackjack_Missions_One_Deck.xlsx — rank-evaluable subset) ──
+const RANK_ORDER={'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'T':10,'J':11,'Q':12,'K':13,'A':14};
+const TENVAL=c=>'TJQK'.includes(c);
+function straightN(cards){                    // distinct consecutive ranks, ace high or low
+  const vs=[...new Set(cards.map(c=>RANK_ORDER[c]))];
+  if(vs.length!==cards.length)return false;
+  const run=a=>{a.sort((x,y)=>x-y);return a[a.length-1]-a[0]===a.length-1;};
+  if(run([...vs]))return true;
+  if(vs.includes(14))return run(vs.map(v=>v===14?1:v));
+  return false;
+}
+const rankCounts=cs=>{const c={};cs.forEach(x=>c[x]=(c[x]||0)+1);return Object.values(c);};
+const MISSIONS=[
+  {cat:'Opening',name:'Any Pair',f:r=>r.deal[0]===r.deal[1]},
+  {cat:'Opening',name:'Blackjack',f:r=>{const[a,b]=r.deal;
+    return (a==='A'&&TENVAL(b))||(b==='A'&&TENVAL(a));}},
+  {cat:'Opening',name:'Pocket Aces',f:r=>r.deal[0]==='A'&&r.deal[1]==='A'},
+  {cat:'Opening',name:'Hard 20',f:r=>TENVAL(r.deal[0])&&TENVAL(r.deal[1])},
+  {cat:'Opening',name:'Starting 11',f:r=>r.deal[0]!=='A'&&r.deal[1]!=='A'&&
+    RANKVAL[r.deal[0]]+RANKVAL[r.deal[1]]===11},
+  {cat:'21+3',name:'Pair (21+3)',f:r=>new Set(r.deal.slice(0,3)).size===2},
+  {cat:'21+3',name:'Three of a Kind (21+3)',f:r=>new Set(r.deal.slice(0,3)).size===1},
+  {cat:'21+3',name:'Straight (21+3)',f:r=>straightN(r.deal.slice(0,3))},
+  {cat:'4 Cards',name:'Two Pair',f:r=>{const v=rankCounts(r.deal);
+    return v.length===2&&v[0]===2&&v[1]===2;}},
+  {cat:'4 Cards',name:'Three of a Kind (4c)',f:r=>Math.max(...rankCounts(r.deal))===3},
+  {cat:'4 Cards',name:'Four-card Straight',f:r=>straightN(r.deal)},
+  {cat:'4 Cards',name:'Four of a Kind',f:r=>new Set(r.deal).size===1},
+  {cat:'Gameplay',name:'Reach 21 (not BJ)',f:r=>r.hands.some(h=>
+    h.cards.length>=3&&total(h.cards)[0]===21)},
+  {cat:'Gameplay',name:'Win with 5+ cards',f:r=>r.hands.some(h=>
+    /WIN/.test(h.res)&&h.cards.length>=5)},
+  {cat:'Gameplay',name:'Win with 6+ cards',f:r=>r.hands.some(h=>
+    /WIN/.test(h.res)&&h.cards.length>=6)},
+  {cat:'Gameplay',name:'Win after Double',f:r=>r.hands.some(h=>
+    h.acts&&h.acts.some(a=>a.startsWith('double'))&&/WIN/.test(h.res))},
+  {cat:'Gameplay',name:'Win Split Hand',f:r=>r.hands.length===2&&r.hands.some(h=>/WIN/.test(h.res))},
+  {cat:'Dealer',name:'Dealer Bust',f:r=>total(r.dealer)[0]>21},
+  {cat:'Dealer',name:'Dealer Bust 5+ cards',f:r=>total(r.dealer)[0]>21&&r.dealer.length>=5},
+  {cat:'Dealer',name:'Dealer Bust 6+ cards',f:r=>total(r.dealer)[0]>21&&r.dealer.length>=6},
+];
+// seeded "reasonable player" model — EXACT mirror of simulate.js (same seeds,
+// same deviation weights), so multi-run averages line up with the sim_* columns
+function mulberry32(seed){
+  let a=seed>>>0;
+  return function(){
+    a|=0;a=(a+0x6D2B79F5)|0;
+    let t=Math.imul(a^(a>>>15),1|a);
+    t=(t+Math.imul(t^(t>>>7),61|t))^t;
+    return ((t^(t>>>14))>>>0)/4294967296;
+  };
+}
+function hashSeed(...parts){
+  let h=0x811c9dc5;
+  for(const p of parts){h^=(p>>>0);h=Math.imul(h,0x01000193);h^=h>>>13;}
+  return h>>>0;
+}
+function makeReasonableDecide(rng){
+  function core(cards,up,canD,canS){
+    let base=ACTIVE.decide(cards,up,canD,canS);
+    const[t,soft]=total(cards);
+    if(base==='P'){
+      const r=RANKVAL[cards[0]];
+      if(r===11)return 'P';
+      const pSkip=(r===8&&up>=9)?0.40:0.35;
+      if(rng()<pSkip)return core(cards,up,canD,false);
+      return 'P';
+    }
+    if(base==='D'){
+      const pSkip=soft?0.55:t===9?0.45:0.30;
+      if(rng()<pSkip)base='H';
+    }
+    if(base==='H'){
+      if(!soft){
+        if(t===16&&up>=9&&rng()<0.45)return 'S';
+        if(t===15&&up>=10&&rng()<0.35)return 'S';
+        if(t===12&&(up===2||up===3)&&rng()<0.30)return 'S';
+      }else if(t===18&&up>=9&&rng()<0.50)return 'S';
+    }
+    if(base==='S'&&!soft&&t===12&&up>=4&&up<=6&&rng()<0.25)return 'H';
+    return base;
+  }
+  return core;
+}
+function missionCounts(cardsStr,deckId,runs){
+  runs=Math.max(1,runs||1);
+  if(runs===1){                      // deterministic active-sheet line
+    const log=[];
+    gameRoundsFrom(cardsStr.split(''),0,START_BANKROLL,fresh(),ACTIVE.decide,ACTIVE.h17,log);
+    return MISSIONS.map(m=>log.reduce((a,r)=>a+(m.f(r)?1:0),0));
+  }
+  const acc=new Array(MISSIONS.length).fill(0);
+  const bid=BigInt(deckId);
+  const seedBase=hashSeed(Number(bid&0xffffffffn),Number(bid>>32n));
+  for(let k=0;k<runs;k++){
+    const log=[];
+    gameRoundsFrom(cardsStr.split(''),0,START_BANKROLL,fresh(),
+      makeReasonableDecide(mulberry32(hashSeed(0x5EED,seedBase,k))),ACTIVE.h17,log);
+    MISSIONS.forEach((m,i)=>log.forEach(r=>{if(m.f(r))acc[i]++;}));
+  }
+  return acc.map(v=>+(v/runs).toFixed(3));
+}
+let STRATREV=0;
+const MISSCACHE=new Map();
+function missionCountsCached(d,runs){
+  const key=d.deck_id+'|'+runs+'|'+STRATREV+'|'+(ACTIVE.h17?1:0)+'|'+ACTIVE.name;
+  if(MISSCACHE.has(key))return MISSCACHE.get(key);
+  const v=missionCounts(d.cards,d.deck_id,runs);
+  MISSCACHE.set(key,v);
+  if(MISSCACHE.size>3000)MISSCACHE.clear();
+  return v;
+}
+
+// minimal SVG line chart: expected line + ±σ band + actual dots/line
+function jChart(o){
+  const w=640,h=210,pl=48,pr=12,pt=12,pb=24;
+  const n=Math.max(o.exp.length,1);
+  const X=i=>pl+(n===1?0.5:(i/(n-1)))*(w-pl-pr);
+  const Y=v=>pt+(1-(Math.max(o.yMin,Math.min(o.yMax,v))-o.yMin)/(o.yMax-o.yMin))*(h-pt-pb);
+  const path=a=>{let s='',pen=false;
+    a.forEach((v,i)=>{if(v==null){pen=false;return;}
+      s+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)+' ';pen=true;});
+    return s;};
+  let band='';
+  if(o.lo&&o.hi){
+    const up=[],dn=[];
+    o.exp.forEach((v,i)=>{if(v==null||o.hi[i]==null)return;
+      up.push(X(i).toFixed(1)+','+Y(o.hi[i]).toFixed(1));
+      dn.unshift(X(i).toFixed(1)+','+Y(o.lo[i]).toFixed(1));});
+    if(up.length)band=`<polygon points="${up.join(' ')} ${dn.join(' ')}" fill="rgba(201,165,92,.14)"/>`;
+  }
+  const ticks=[o.yMin,(o.yMin+o.yMax)/2,o.yMax].map(v=>
+    `<text x="${pl-6}" y="${Y(v)+3.5}" text-anchor="end" font-size="10" fill="#8B9A93" font-family="IBM Plex Mono,monospace">${o.yFmt(v)}</text>
+     <line x1="${pl}" x2="${w-pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="#22302B" stroke-width="1"/>`).join('');
+  const ref=o.refY==null?'':`<line x1="${pl}" x2="${w-pr}" y1="${Y(o.refY)}" y2="${Y(o.refY)}" stroke="#98A6A0" stroke-width="1" stroke-dasharray="4 4" opacity=".6"/>`;
+  const step=Math.max(1,Math.ceil(n/14));
+  const xlab=o.exp.map((_,i)=>i%step?'':`<text x="${X(i)}" y="${h-6}" text-anchor="middle" font-size="9.5" fill="#8B9A93" font-family="IBM Plex Mono,monospace">${i+1}</text>`).join('');
+  const dots=(o.act||[]).map((v,i)=>v==null?'':
+    `<circle cx="${X(i)}" cy="${Y(v)}" r="4" fill="#EFE6D0" stroke="#141816" stroke-width="1.5"><title>deck ${i+1}: ${o.yFmt(v)}</title></circle>`).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block">
+    ${ticks}${band}${ref}
+    <path d="${path(o.exp)}" fill="none" stroke="var(--gold)" stroke-width="2"/>
+    <path d="${path(o.act||[])}" fill="none" stroke="#EFE6D0" stroke-width="1.5" opacity=".8"/>
+    ${dots}${xlab}</svg>`;
+}
+
+function journeyRender(){
+  const L=JOURNEY.list;
+  const [fMean,fStd]=jModelFields();
+  document.getElementById('jModel').value=JOURNEY.model;
+  const modelName=JOURNEY.model==='book'?'flat $100':JOURNEY.model==='mix'?'chips 200/350/500':'flat $500';
+  document.getElementById('jModelCol').textContent=`Exp $ (${modelName})`;
+  document.getElementById('jCount').textContent=L.length?`${L.length} decks · FIFO`:'';
+  const nextE=jNextEntry();
+  const played=L.filter(e=>e.res);
+
+  // tiles
+  const dOf=e=>BYID.get(e.id);
+  const expNets=L.map(e=>{const d=dOf(e);return d&&d[fMean]!=null?d[fMean]-START_BANKROLL:null;});
+  const expTotal=expNets.reduce((a,v)=>a+(v||0),0);
+  const varSum=L.reduce((a,e)=>{const d=dOf(e);return a+(d&&d[fStd]!=null?d[fStd]*d[fStd]:0);},0);
+  const actualNet=played.reduce((a,e)=>a+e.res.net,0);
+  const winVals=L.map(e=>{const d=dOf(e);return d?d.sim_win_pct:null;}).filter(v=>v!=null);
+  const avgExpWin=winVals.length?winVals.reduce((a,b)=>a+b,0)/winVals.length:null;
+  const aw=played.reduce((a,e)=>a+e.res.pw,0),al=played.reduce((a,e)=>a+e.res.dw,0);
+  const actWin=aw+al?100*aw/(aw+al):null;
+  let toughest=null,riskiest=null;
+  for(const e of L){const d=dOf(e);if(!d)continue;
+    if(d.sim_win_pct!=null&&(!toughest||d.sim_win_pct<toughest.w))toughest={id:e.id,w:d.sim_win_pct};
+    if(d.sim_500_bust!=null&&(!riskiest||d.sim_500_bust>riskiest.b))riskiest={id:e.id,b:d.sim_500_bust};}
+  // missions per stage — averaged over N reasonable-player runs, summed over a stage range
+  const mRuns=Math.min(500,Math.max(1,+(JOURNEY.mRuns??100)||100));
+  const mFrom=L.length?Math.max(1,Math.min(+(JOURNEY.mFrom||1),L.length)):1;
+  const mTo=L.length?(JOURNEY.mTo?Math.max(mFrom,Math.min(+JOURNEY.mTo,L.length)):L.length):1;
+  const inRange=i=>i>=mFrom-1&&i<=mTo-1;
+  const missPerDeck=L.map(e=>{const d=dOf(e);return d?missionCountsCached(d,mRuns):null;});
+  const missTotals=MISSIONS.map((_,mi)=>L.reduce((a,e,i)=>
+    a+((inRange(i)&&missPerDeck[i])?missPerDeck[i][mi]:0),0));
+  const covered=missTotals.filter(t=>t>=1).length;
+  document.getElementById('jTiles').innerHTML=L.length?[
+    ['Journey decks',fmt(L.length),`${played.length} played · ${L.length-played.length} to go`,'gold'],
+    ['Expected total net',(expTotal>=0?'+$':'−$')+fmt(Math.abs(Math.round(expTotal))),
+      `±$${fmt(Math.round(Math.sqrt(varSum)))} · ${modelName}`,expTotal>=0?'win':'lose'],
+    ['Actual net so far',played.length?(actualNet>=0?'+$':'−$')+fmt(Math.abs(actualNet)):'—',
+      played.length?`after ${played.length} deck${played.length>1?'s':''}`:'nothing played yet',
+      actualNet>0?'win':actualNet<0?'lose':'push'],
+    ['Avg expected win %',avgExpWin==null?'—':f1(avgExpWin)+'%','weighted sim across the journey','gold'],
+    ['Actual win %',actWin==null?'—':f1(actWin)+'%','decided hands so far',''],
+    ['Toughest deck',toughest?f1(toughest.w)+'%':'—',toughest?'deck '+toughest.id:'','lose'],
+    ['Riskiest @ $500',riskiest&&riskiest.b?riskiest.b+'% bust':'—',riskiest&&riskiest.b?'deck '+riskiest.id:'','lose'],
+    ['Missions covered',`${covered} / ${MISSIONS.length}`,
+      `expected ≥1× in stages ${mFrom}–${mTo} · ${mRuns>1?mRuns+' runs/deck':'book line'}`,'gold'],
+  ].map(([k,v,s,c])=>`<div class="stat ${c}"><div class="k">${k}</div><div class="v">${v}</div>
+     ${s?`<div class="s">${s}</div>`:''}</div>`).join('')
+  :'<div class="stat"><div class="k">Journey</div><div class="v">empty</div><div class="s">add decks to begin</div></div>';
+
+  // experience curve (win %)
+  const expW=L.map(e=>{const d=dOf(e);return d?d.sim_win_pct:null;});
+  const stdW=L.map(e=>{const d=dOf(e);return d?d.sim_win_std:null;});
+  const actW=L.map(e=>e.res&&(e.res.pw+e.res.dw)?+(100*e.res.pw/(e.res.pw+e.res.dw)).toFixed(1):null);
+  document.getElementById('jChartWin').innerHTML=L.length?jChart({
+    exp:expW,
+    lo:expW.map((v,i)=>v==null||stdW[i]==null?null:v-stdW[i]),
+    hi:expW.map((v,i)=>v==null||stdW[i]==null?null:v+stdW[i]),
+    act:actW,yMin:0,yMax:100,refY:50,yFmt:v=>Math.round(v)+'%',
+  }):'<p class="secnote">Add decks to see the curve.</p>';
+
+  // cumulative net
+  let run=0;const expCum=expNets.map(v=>{run+=(v||0);return run;});
+  let runV=0;const cumStd=L.map(e=>{const d=dOf(e);runV+=(d&&d[fStd]!=null?d[fStd]*d[fStd]:0);return Math.sqrt(runV);});
+  let runA=0;const actCum=L.map(e=>{if(!e.res)return null;runA+=e.res.net;return runA;});
+  const allVals=[...expCum.map((v,i)=>v+cumStd[i]),...expCum.map((v,i)=>v-cumStd[i]),
+    ...actCum.filter(v=>v!=null),0];
+  const yMax=Math.max(...allVals,100),yMin=Math.min(...allVals,-100);
+  document.getElementById('jNetNote').textContent=
+    `Running expected net across the journey under ${modelName} bets (band = ±1σ cumulative) vs the actual running net. Each deck starts fresh at $3,000; net = final − 3,000, summed in play order.`;
+  document.getElementById('jChartNet').innerHTML=L.length?jChart({
+    exp:expCum,
+    lo:expCum.map((v,i)=>v-cumStd[i]),hi:expCum.map((v,i)=>v+cumStd[i]),
+    act:actCum,yMin,yMax,refY:0,
+    yFmt:v=>(v<0?'−$':'$')+Math.abs(Math.round(v)).toLocaleString('en-US'),
+  }):'';
+
+  // missions matrix
+  document.getElementById('jMissFrom').value=mFrom;
+  document.getElementById('jMissFrom').max=L.length||1;
+  document.getElementById('jMissTo').value=mTo;
+  document.getElementById('jMissTo').max=L.length||1;
+  document.getElementById('jMissRuns').value=mRuns;
+  document.getElementById('jMissNote').textContent=
+    mRuns>1?`weighted mean over ${mRuns} reasonable-player runs per deck`:'single deterministic active-sheet line';
+  document.getElementById('jMissCount').textContent=
+    L.length?`${covered} of ${MISSIONS.length} expected in stages ${mFrom}–${mTo}`:'';
+  const cf=v=>mRuns>1?(v>=0.005?(+v.toFixed(2)).toString():null):(v||null);
+  document.getElementById('jMissions').innerHTML=!L.length?'':
+    `<table><thead><tr><th style="text-align:left">Category</th><th style="text-align:left">Mission</th>`+
+    L.map((_,i)=>`<th title="stage ${i+1}${inRange(i)?' (in sum range)':' (outside sum range)'}"
+      style="${inRange(i)?'':'opacity:.35'}">${i+1}</th>`).join('')+
+    `<th title="expected occurrences summed over stages ${mFrom}–${mTo}">Σ ${mFrom}–${mTo}</th></tr></thead><tbody>`+
+    MISSIONS.map((m,mi)=>{
+      const cells=missPerDeck.map((pc,i)=>{
+        const raw=pc==null?null:cf(pc[mi]);
+        const inner=pc==null?'—':(raw==null?'<span class="dim">·</span>'
+          :(pc[mi]>=0.5?`<span class="mhit">${raw}</span>`:`<span class="dim">${raw}</span>`));
+        return `<td style="${inRange(i)?'':'opacity:.35'}">${inner}</td>`;
+      }).join('');
+      const tot=missTotals[mi];
+      return `<tr><td class="dim" style="text-align:left">${m.cat}</td>`+
+        `<td style="text-align:left">${m.name}</td>`+cells+
+        `<td><b class="${tot>=1?'delta-up':tot>0?'dim':'dim'}">${tot?(mRuns>1?tot.toFixed(1):tot):'·'}</b></td></tr>`;
+    }).join('')+
+    `<tr><td></td><td style="text-align:left" class="dim">mission events at this stage</td>`+
+    L.map((_,i)=>{const pc=missPerDeck[i];
+      const t=pc?pc.reduce((a,b)=>a+b,0):null;
+      return `<td style="${inRange(i)?'':'opacity:.35'}"><b>${t==null?'—':(mRuns>1?t.toFixed(1):t)}</b></td>`;}).join('')+
+    `<td></td></tr></tbody></table>`;
+
+  // deck list
+  document.querySelector('#jTable tbody').innerHTML=L.map((e,i)=>{
+    const d=dOf(e);
+    let status,cls='dim';
+    if(!d){status='⚠ deleted from database';cls='delta-down';}
+    else if(e.res){
+      const r=e.res;
+      status=`done — net ${r.net>=0?'+':'−'}$${fmt(Math.abs(r.net))} · ${r.pw}W / ${r.dw}L / ${r.push}P`;
+      cls=r.net>0?'delta-up':r.net<0?'delta-down':'dim';
+    }
+    else if(e===nextE){status='▶ next up';cls='delta-up';}
+    else status='upcoming';
+    return `<tr class="datarow" data-jid="${e.id}" data-ji="${i}" draggable="true">
+      <td class="dim" style="white-space:nowrap"><span class="jdrag" title="drag to reorder">⠿</span> ${i+1}</td><td class="id">${e.id}</td>
+      <td>${d?`<span class="tiertag">${d.tier??'—'}</span>`:'—'}</td>
+      <td>${d&&d.sim_win_pct!=null?d.sim_win_pct+'%':'—'}</td>
+      <td class="dim">${d&&d.sim_win_std!=null?'±'+d.sim_win_std:'—'}</td>
+      <td>${d&&d[fMean]!=null?fmt(d[fMean]):'—'}</td>
+      <td>${d&&d.sim_500_bust!=null?d.sim_500_bust+'%':'—'}</td>
+      <td style="text-align:left" class="${cls}">${status}</td>
+      <td style="white-space:nowrap">
+        <button class="jmini" data-jup="${i}" title="move up">↑</button>
+        <button class="jmini" data-jdn="${i}" title="move down">↓</button>
+        <button class="jmini" data-jrm="${i}" title="remove">✕</button>
+      </td></tr>`;
+  }).join('');
+}
+
+function jPace(mode){
+  const key=e=>{const d=BYID.get(e.id);return d&&d.sim_win_pct!=null?d.sim_win_pct:50;};
+  let l=[...JOURNEY.list];
+  if(mode==='easy')l.sort((a,b)=>key(b)-key(a));
+  else if(mode==='hard')l.sort((a,b)=>key(a)-key(b));
+  else if(mode==='shuffle')for(let i=l.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));[l[i],l[j]]=[l[j],l[i]];}
+  else if(mode==='wave'){
+    l.sort((a,b)=>key(b)-key(a));
+    const out=[];let hi=0,lo=l.length-1;
+    while(hi<=lo){out.push(l[hi++]);if(hi<=lo)out.push(l[lo--]);}
+    l=out;
+  }
+  JOURNEY.list=l;jSave();journeyRender();
+}
+
+// records the finished deck's actual result into the journey (first unplayed match)
+function journeyRecord(){
+  if(!G.deck)return;
+  const e=JOURNEY.list.find(x=>!x.res&&String(x.id)===String(G.deck.deck_id));
+  if(!e)return;
+  const s=G.stats;
+  e.res={rounds:s.rounds,pw:s.player_wins,dw:s.dealer_wins,push:s.pushes,
+    pbj:s.player_bj,dbj:s.dealer_bj,net:G.bankroll-START_BANKROLL,bankroll:G.bankroll};
+  jSave();journeyRender();
+  if(!jNextEntry())setMsg('Journey complete! Open the Journey tab for the full picture.','win');
+}
+
+// ── journey wiring ──
+document.getElementById('jAddBtn').onclick=()=>{
+  const v=document.getElementById('jAddId').value.trim();
+  const err=document.getElementById('jErr');
+  if(!v)return;
+  if(jAdd([v])){err.textContent='';document.getElementById('jAddId').value='';}
+  else err.textContent='No deck with that ID in the database.';
+};
+document.getElementById('jAddId').addEventListener('keydown',e=>{
+  if(e.key==='Enter')document.getElementById('jAddBtn').click();});
+document.getElementById('jAddRandom').onclick=()=>{
+  const pool=FILTERED.length?FILTERED:DECKS;
+  const picks=[];
+  for(let i=0;i<5&&pool.length;i++)picks.push(pool[Math.floor(Math.random()*pool.length)].deck_id);
+  jAdd(picks);
+};
+document.getElementById('jBulkAdd').onclick=()=>{
+  const n=Math.max(1,+document.getElementById('jBulkN').value||5);
+  const mins=[...document.querySelectorAll('input[data-jmin]')]
+    .filter(i=>i.value!=='').map(i=>[i.dataset.jmin,+i.value]);
+  const maxs=[...document.querySelectorAll('input[data-jmax]')]
+    .filter(i=>i.value!=='').map(i=>[i.dataset.jmax,+i.value]);
+  const inJ=new Set(JOURNEY.list.map(e=>e.id));
+  const pool=(FILTERED.length?FILTERED:DECKS).filter(d=>!inJ.has(String(d.deck_id))
+    &&mins.every(([k,v])=>d[k]!=null&&d[k]>=v)
+    &&maxs.every(([k,v])=>d[k]!=null&&d[k]<=v));
+  const info=document.getElementById('jBulkInfo');
+  if(!pool.length){info.textContent='no decks match the requirements';return;}
+  const idx=[...pool.keys()],picks=[];
+  for(let i=0;i<n&&idx.length;i++){
+    const j=Math.floor(Math.random()*idx.length);
+    picks.push(pool[idx[j]].deck_id);idx.splice(j,1);
+  }
+  jAdd(picks);
+  info.textContent=`added ${picks.length} of ${fmt(pool.length)} matching decks`;
+};
+document.getElementById('jStart').onclick=()=>{
+  const err=document.getElementById('jErr');err.textContent='';
+  const e=jNextEntry();
+  if(!e){err.textContent=JOURNEY.list.length?'Journey complete — press “Reset results” to replay it.':'Add decks to the journey first.';return;}
+  if(!BYID.has(e.id)){err.textContent=`Deck ${e.id} was deleted from the database — remove it from the list.`;return;}
+  switchView('play');loadDeckById(e.id);
+};
+document.getElementById('jReset').onclick=()=>{
+  JOURNEY.list.forEach(e=>e.res=null);jSave();journeyRender();
+};
+document.getElementById('jClear').onclick=()=>{
+  if(JOURNEY.list.length&&!confirm(`Remove all ${JOURNEY.list.length} decks from the journey?`))return;
+  JOURNEY.list=[];jSave();journeyRender();
+};
+document.getElementById('jModel').onchange=e=>{
+  JOURNEY.model=e.target.value;jSave();journeyRender();
+};
+let jMissDeb;
+for(const[id,key]of[['jMissFrom','mFrom'],['jMissTo','mTo'],['jMissRuns','mRuns']]){
+  document.getElementById(id).addEventListener('input',e=>{
+    clearTimeout(jMissDeb);
+    jMissDeb=setTimeout(()=>{
+      JOURNEY[key]=+e.target.value||null;
+      jSave();journeyRender();
+    },350);
+  });
+}
+document.querySelectorAll('button[data-jorder]').forEach(b=>
+  b.onclick=()=>jPace(b.dataset.jorder));
+document.querySelector('#jTable tbody').addEventListener('click',e=>{
+  const up=e.target.closest('[data-jup]'),dn=e.target.closest('[data-jdn]'),
+    rm=e.target.closest('[data-jrm]');
+  const L=JOURNEY.list;
+  if(up){const i=+up.dataset.jup;if(i>0)[L[i-1],L[i]]=[L[i],L[i-1]];jSave();journeyRender();return;}
+  if(dn){const i=+dn.dataset.jdn;if(i<L.length-1)[L[i+1],L[i]]=[L[i],L[i+1]];jSave();journeyRender();return;}
+  if(rm){L.splice(+rm.dataset.jrm,1);jSave();journeyRender();return;}
+  const tr=e.target.closest('tr.datarow');
+  if(tr&&BYID.has(tr.dataset.jid)){loadDeckById(tr.dataset.jid);switchView('play');}
+});
+// drag & drop reordering of the journey list (↑/↓ buttons stay as fallback)
+let jDragIdx=null;
+const jtb=document.querySelector('#jTable tbody');
+jtb.addEventListener('dragstart',e=>{
+  const tr=e.target.closest('tr.datarow');if(!tr)return;
+  jDragIdx=+tr.dataset.ji;
+  tr.classList.add('dragging');
+  e.dataTransfer.effectAllowed='move';
+  try{e.dataTransfer.setData('text/plain',String(jDragIdx));}catch(_){}
+});
+jtb.addEventListener('dragover',e=>{
+  if(jDragIdx==null)return;
+  const tr=e.target.closest('tr.datarow');if(!tr)return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect='move';
+  const r=tr.getBoundingClientRect();
+  jtb.querySelectorAll('.drop-above,.drop-below')
+    .forEach(x=>x.classList.remove('drop-above','drop-below'));
+  tr.classList.add(e.clientY>r.top+r.height/2?'drop-below':'drop-above');
+});
+jtb.addEventListener('drop',e=>{
+  if(jDragIdx==null)return;
+  const tr=e.target.closest('tr.datarow');if(!tr)return;
+  e.preventDefault();
+  const r=tr.getBoundingClientRect();
+  let to=+tr.dataset.ji+(e.clientY>r.top+r.height/2?1:0);
+  const from=jDragIdx;jDragIdx=null;
+  if(to===from||to===from+1){journeyRender();return;}
+  const L=JOURNEY.list;
+  const[item]=L.splice(from,1);
+  if(to>from)to--;
+  L.splice(to,0,item);
+  jSave();journeyRender();
+});
+jtb.addEventListener('dragend',()=>{jDragIdx=null;journeyRender();});
+
+document.getElementById('addJourneyBtn').onclick=()=>{
+  if(!state.selected.size)return;
+  const sorted=[...FILTERED].sort((a,b)=>{
+    const va=a[state.sortKey]??-Infinity,vb=b[state.sortKey]??-Infinity;
+    return (va<vb?-1:va>vb?1:0)*state.sortDir;});
+  const ids=sorted.filter(d=>state.selected.has(String(d.deck_id))).map(d=>d.deck_id);
+  for(const id of [...state.selected])
+    if(!ids.some(x=>String(x)===id))ids.push(id);   // selected outside the filter
+  const n=jAdd(ids);
+  setMsgDb(`Added ${n} decks to the journey (now ${JOURNEY.list.length} total) — see the Journey tab.`);
+};
+document.getElementById('jNextBtn').onclick=()=>{
+  const e=jNextEntry();
+  if(e&&BYID.has(e.id))loadDeckById(e.id);
+};
+// ── journey sharing — the whole journey rides in the URL hash ──
+const ONLINE_URL='https://gilmisgav.github.io/deck-room/';
+document.getElementById('jShare').onclick=async()=>{
+  const err=document.getElementById('jErr');err.textContent='';
+  if(!JOURNEY.list.length){err.textContent='Add decks to the journey first.';return;}
+  const payload={ids:JOURNEY.list.map(e=>e.id),model:JOURNEY.model,
+    mFrom:JOURNEY.mFrom||1,mTo:JOURNEY.mTo||null,mRuns:JOURNEY.mRuns||100};
+  const enc=btoa(JSON.stringify(payload)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const local=['localhost','127.0.0.1'].includes(location.hostname);
+  const url=(local?ONLINE_URL:location.origin+location.pathname)+'#j='+enc;
+  try{
+    await navigator.clipboard.writeText(url);
+    document.getElementById('jBulkInfo').textContent=
+      'share link copied — anyone opening it gets this journey'+(local?' (link points to the online copy)':'');
+  }catch(e){prompt('Copy the share link:',url);}
+};
+// load a shared journey from the URL hash (works on the online copy too)
+(function(){
+  const m=location.hash.match(/#j=([A-Za-z0-9\-_]+)/);
+  if(!m)return;
+  try{
+    const p=JSON.parse(atob(m[1].replace(/-/g,'+').replace(/_/g,'/')));
+    if(!Array.isArray(p.ids)||!p.ids.length)return;
+    if(JOURNEY.list.length&&
+      !confirm(`Load a shared journey with ${p.ids.length} decks?\n\nIt replaces your current journey (${JOURNEY.list.length} decks).`)){
+      history.replaceState(null,'',location.pathname+location.search);return;
+    }
+    const known=p.ids.map(String).filter(id=>BYID.has(id));
+    JOURNEY={list:known.map(id=>({id,res:null})),model:p.model||'book',
+      mFrom:p.mFrom||1,mTo:p.mTo||null,mRuns:p.mRuns||100};
+    jSave();
+    history.replaceState(null,'',location.pathname+location.search);
+    setTimeout(()=>{
+      switchView('journey');
+      if(known.length<p.ids.length)
+        document.getElementById('jErr').textContent=
+          `${p.ids.length-known.length} shared deck(s) are not in this database and were skipped.`;
+    },0);
+  }catch(e){}
+})();
+
+// ═══════════════════════════════════════════════════════ STRATEGY TAB
+const CODES_TOT=['H','S','D/H','D/S','R/H'];
+const CODES_PAIR=['P','P/H','H','S','D/H'];
+const CODE_CLS={'H':'cH','S':'cS','P':'cP','D/H':'cDH','D/S':'cDS','P/H':'cPH','R/H':'cRH'};
+function currentSheet(){
+  const k=document.getElementById('sheetSel').value;
+  return k==='book'?SHEET_BOOK:k==='duel'?SHEET_DUEL:CUSTOM;
+}
+function renderStrategy(){
+  const sh=currentSheet();
+  const blocks=[
+    ['Hard totals','hard',Object.keys(sh.hard).map(Number).sort((a,b)=>a-b),k=>k],
+    ['Soft totals','soft',Object.keys(sh.soft).map(Number).sort((a,b)=>a-b),
+      k=>k===12?'A,A*':'A,'+(k-11)],
+    ['Pairs','pairs',['2','3','4','5','6','7','8','9','10','A'],k=>k+','+k],
+  ];
+  document.getElementById('stratGrids').innerHTML=blocks.map(([title,sec,keys,lab])=>
+    `<div class="stratblock"><h4>${title}</h4><table class="sheet">
+      <tr><td class="rl"></td>${UPS.map(u=>`<th>${u===11?'A':u}</th>`).join('')}</tr>
+      ${keys.map(k=>`<tr><td class="rl">${lab(k)}</td>${UPS.map((u,i)=>{
+        const code=sh[sec][k][i];
+        return `<td><span class="cell-c ${CODE_CLS[code]}" data-sec="${sec}" data-k="${k}" data-i="${i}">${code}</span></td>`;
+      }).join('')}</tr>`).join('')}
+    </table></div>`).join('');
+  document.getElementById('stratN').textContent=fmt(DECKS.length);
+}
+function stratDirty(){
+  document.getElementById('stratStat').innerHTML=
+    `active: <b>${ACTIVE.name} · ${ACTIVE.h17?'H17':'S17'}</b> — pending changes, press Apply`;
+}
+document.getElementById('stratGrids').addEventListener('click',e=>{
+  const c=e.target.closest('.cell-c');if(!c)return;
+  const sel=document.getElementById('sheetSel');
+  if(sel.value!=='custom'){   // editing a preset forks it into Custom
+    CUSTOM=JSON.parse(JSON.stringify(currentSheet()));CUSTOM.name='Custom';
+    sel.value='custom';
+  }
+  const list=c.dataset.sec==='pairs'?CODES_PAIR:CODES_TOT;
+  const cur=CUSTOM[c.dataset.sec][c.dataset.k][+c.dataset.i];
+  CUSTOM[c.dataset.sec][c.dataset.k][+c.dataset.i]=list[(list.indexOf(cur)+1)%list.length];
+  renderStrategy();stratDirty();
+});
+document.getElementById('sheetSel').onchange=()=>{renderStrategy();stratDirty();};
+document.getElementById('h17chk').onchange=stratDirty;
+let RESIM=false;
+function applyStrategy(){
+  if(RESIM)return;
+  RESIM=true;
+  const sh=currentSheet(),h17=document.getElementById('h17chk').checked;
+  const decide=makeDecide(sh);
+  const btn=document.getElementById('applyStrat');btn.disabled=true;
+  let i=0;
+  (function chunk(){
+    const t0=performance.now();
+    while(i<DECKS.length&&performance.now()-t0<40){
+      const d=DECKS[i++];
+      const st=gameRoundsFrom(d.cards.split(''),0,START_BANKROLL,fresh(),decide,h17);
+      Object.assign(d,st);
+      const dec=d.player_wins+d.dealer_wins;
+      d.win_pct=dec?+(100*d.player_wins/dec).toFixed(1):0;
+      d.pd_ratio=d.dealer_wins?+(d.player_wins/d.dealer_wins).toFixed(3):null;
+    }
+    document.getElementById('stratBar').style.width=(100*i/DECKS.length)+'%';
+    document.getElementById('stratStat').textContent=`re-simulating… ${fmt(i)} / ${fmt(DECKS.length)}`;
+    if(i<DECKS.length){setTimeout(chunk,0);return;}
+    ACTIVE={name:sh.name,decide,h17};
+    STRATREV++;                     // invalidate cached mission averages
+    RESIM=false;btn.disabled=false;
+    const labl=`${sh.name} · ${h17?'H17':'S17'}`;
+    document.getElementById('stratStat').innerHTML=`active: <b>${labl}</b> ✓ all decks re-simulated`;
+    document.getElementById('stratChip').textContent=labl;
+    if(GEN.ref)setGenRef(GEN.ref);           // refresh ref KPI values under new stats
+    refresh();
+    if(G.deck)render();
+  })();
+}
+document.getElementById('applyStrat').onclick=applyStrategy;
+
+// ═══════════════════════════════════════════════════════ MISSIONS MACHINE
+// mission types from daily_missions_economy_spec_v2.md, measured per deck by the
+// weighted 200-run reasonable-player sim (16v10 stands, skipped doubles/splits…)
+const MBANK=[
+  {type:'blackjacks',label:'Make Blackjacks',col:'sim_pbj',src:'M3+D',
+    def:'Be dealt a natural 21 (Ace + 10-value) — counted even when it pushes',
+    desc:x=>`Make ${x} Blackjacks`},
+  {type:'doubleDowns',label:'Make Double Downs',col:'m_dd',src:'M3+D',
+    def:'Double down on a hand',desc:x=>`Make ${x} double downs`},
+  {type:'splits',label:'Make Splits',col:'m_split',src:'M3+D',
+    def:'Split a pair',desc:x=>`Make ${x} splits`},
+  {type:'winBothSplitHands',label:'Win Both Split Hands',col:'m_winboth',src:'M3+D',
+    def:'Both hands of a split win in the same round',desc:x=>`Win both split hands ${x} times`},
+  {type:'make21sNonBJ',label:'Make 21s (non-BJ)',col:'sim_p21',src:'M3',
+    def:'Reach a hand total of exactly 21 that is not a natural Blackjack',
+    desc:x=>`Make ${x} non-BJ 21s`},
+  {type:'winWith3PlusCards',label:'Win with 3+ Cards',col:'m_win3c',src:'M3+D',
+    def:'Win a hand whose final hand contains 3 or more cards',desc:x=>`Win ${x} multi-card hands`},
+  {type:'fastScorer',label:'Fast Scorer (5k in first X hands)',col:null,lazy:true,pct:true,src:'M3',
+    def:'Pass 5,000 score within your first X hands of a match — probability per deck, simulated under chip-mix betting (200/350/500); the target sets X',
+    desc:x=>`Reach 5,000 in first ${x} hands`},
+  {type:'splitThenDouble',label:'Split then Double',col:'m_splitdbl',src:'M3+D',
+    def:'A split followed by a double down on a split hand (DAS)',
+    desc:x=>`Win ${x} split-then-double hands`},
+  {type:'winSoftHand',label:'Win Soft Hand',col:'m_winsoft',src:'D',
+    def:'Winning hands whose final total is soft (an ace counting as 11)',
+    desc:x=>`Win ${x} soft hands`},
+  {type:'winUnderdogStart',label:'Win Underdog Start',col:'m_winudog',src:'D',
+    def:'Start hard 12–16 against dealer 9/10/A and win the hand',
+    desc:x=>`Win ${x} underdog starts`},
+  {type:'winDealerBustLowHand',label:'Win Dealer-Bust Low Hand',col:'m_windbust',src:'D',
+    def:'Dealer busts while you win standing on 16 or less',
+    desc:x=>`Win ${x} dealer-bust low hands`},
+  {type:'winPVP',label:'Win PVP (match)',col:'m_matchwin',pct:true,src:'D',
+    def:'Win the match — finish the deck above $3,000 (probability per deck)',
+    desc:x=>`Win ${x} PVP matches`},
+  {type:'winPvpStreak',label:'Win PVP Streak',col:'m_matchwin',pct:true,streak:true,src:'D',
+    def:'Consecutive match wins across the journey — evaluated from per-deck match-win odds in play order',
+    desc:x=>`Win ${x} PVP matches in a row`},
+];
+// Fast Scorer: P(bankroll ≥ $5,000 within the first X rounds), chip-mix bets
+const FS_CACHE=new Map();
+function makeBetMixB(rng){
+  const CH=[200,350,500];
+  return bk=>{const aff=CH.filter(c=>c<=bk);
+    if(!aff.length)return Math.min(bk,CH[0]);
+    return aff[Math.floor(rng()*aff.length)];};
+}
+function fsDeckProb(d,X,runs){
+  runs=runs||40;
+  const key=d.deck_id+'|'+X+'|'+runs+'|'+STRATREV;
+  if(FS_CACHE.has(key))return FS_CACHE.get(key);
+  const bid=BigInt(d.deck_id);
+  const seedBase=hashSeed(Number(bid&0xffffffffn),Number(bid>>32n));
+  let hit=0;
+  for(let k=0;k<runs;k++){
+    const log=[];
+    gameRoundsFrom(d.cards.split(''),0,START_BANKROLL,fresh(),
+      makeReasonableDecide(mulberry32(hashSeed(0x5EED,seedBase,k))),ACTIVE.h17,log,
+      makeBetMixB(mulberry32(hashSeed(0xBE7,seedBase,k))));
+    if(log.slice(0,X).some(r=>r.bk>=5000))hit++;
+  }
+  const p=hit/runs;
+  FS_CACHE.set(key,p);
+  if(FS_CACHE.size>4000)FS_CACHE.clear();
+  return p;
+}
+function fsPoolAvg(pool,X){
+  const key='pool|'+pool.length+'|'+X+'|'+STRATREV;
+  if(FS_CACHE.has(key))return FS_CACHE.get(key);
+  const n=Math.min(120,pool.length);
+  let s=0;
+  for(let i=0;i<n;i++)s+=fsDeckProb(pool[Math.floor(i*pool.length/n)],X,30);
+  const v=n?s/n:0;
+  FS_CACHE.set(key,v);
+  return v;
+}
+let MORDER=[];   // mission order chosen by the composer (chain index order)
+const fsWindow=()=>Math.max(1,+document.querySelector('input[data-mtarget="fastScorer"]')?.value||8);
+const mVal=(d,m)=>{
+  if(m.lazy)return 0;   // fastScorer valued separately where supported
+  const v=d[m.col];return v==null?0:(m.pct?v/100:v);
+};
+const tierOf=avg=>avg>=0.45?'easy':avg>=0.12?'medium':'hard';
+const TIER_CLR={easy:'var(--win)',medium:'var(--gold)',hard:'var(--lose)'};
+// exact P(a run of ≥T consecutive wins) for independent per-deck win odds ps
+function streakProb(ps,T){
+  if(T<=0)return 1;
+  let states=new Array(T).fill(0);states[0]=1;let hit=0;
+  for(const p of ps){
+    const next=new Array(T).fill(0);
+    for(let r=0;r<T;r++){
+      const m=states[r];if(!m)continue;
+      if(r+1>=T)hit+=m*p;else next[r+1]+=m*p;
+      next[0]+=m*(1-p);
+    }
+    states=next;
+  }
+  return hit;
+}
+function missionsRender(){
+  const pool=FILTERED.length?FILTERED:DECKS;
+  document.getElementById('mPool').textContent=fmt(pool.length);
+  const tb=document.querySelector('#mTable tbody');
+  const keep=new Map([...tb.querySelectorAll('tr')].map(tr=>{
+    const cb=tr.querySelector('input[data-mt]');
+    const tg=tr.querySelector('input[data-mtarget]');
+    return cb?[cb.dataset.mt,{on:cb.checked,target:tg.value}]:[null,null];
+  }));
+  tb.innerHTML=MBANK.map(m=>{
+    const prev=keep.get(m.type)||{on:false,target:''};
+    let avg,ge1,best;
+    if(m.lazy){
+      avg=fsPoolAvg(pool,+(prev.target||8));ge1=null;best=null;
+    }else{
+      avg=pool.reduce((a,d)=>a+mVal(d,m),0)/(pool.length||1);
+      ge1=100*pool.filter(d=>mVal(d,m)>=(m.pct?0.5:1)).length/(pool.length||1);
+      best=Math.max(0,...pool.map(d=>mVal(d,m)));
+    }
+    const tier=tierOf(avg);
+    return `<tr title="${m.def}">
+      <td><input type="checkbox" data-mt="${m.type}" ${prev.on?'checked':''}></td>
+      <td style="text-align:left">${m.label}${m.streak?' <span class="dim">(journey-level)</span>':''}</td>
+      <td class="dim">${m.src}</td>
+      <td><span style="color:${TIER_CLR[tier]};font-weight:600">${tier}</span></td>
+      <td>${m.pct?(100*avg).toFixed(1)+'%':avg.toFixed(2)}</td>
+      <td class="dim">${m.streak||m.lazy?'—':ge1.toFixed(0)+'%'}</td>
+      <td class="dim">${m.streak||m.lazy?'—':(m.pct?(100*best).toFixed(0)+'%':best.toFixed(2))}</td>
+      <td><input type="number" min="1" style="width:70px" data-mtarget="${m.type}" value="${prev.target||(m.lazy?8:'')}" placeholder="—"></td>
+    </tr>`;
+  }).join('');
+}
+function mSelected(){
+  const sel=MBANK.filter(m=>document.querySelector(`input[data-mt="${m.type}"]`)?.checked)
+    .map(m=>({m,target:Math.max(1,+document.querySelector(`input[data-mtarget="${m.type}"]`).value||1)}));
+  if(MORDER.length)sel.sort((a,b)=>{
+    const ia=MORDER.indexOf(a.m.type),ib=MORDER.indexOf(b.m.type);
+    return (ia<0?99:ia)-(ib<0?99:ib);});
+  return sel;
+}
+function effortMult(){return +document.getElementById('mEffort').value||0.75;}
+function suggestTargets(){
+  const pool=FILTERED.length?FILTERED:DECKS;
+  const K=Math.max(1,+document.getElementById('mK').value||5);
+  const eff=effortMult();
+  for(const m of MBANK){
+    const cb=document.querySelector(`input[data-mt="${m.type}"]`);
+    if(!cb||!cb.checked)continue;
+    if(m.lazy)continue;                       // fastScorer target = hands window, user-set
+    const avg=pool.reduce((a,d)=>a+mVal(d,m),0)/(pool.length||1);
+    const t=m.streak?Math.max(2,Math.round(eff*2.5)):Math.max(1,Math.round(eff*K*avg));
+    document.querySelector(`input[data-mtarget="${m.type}"]`).value=t;
+  }
+}
+document.getElementById('mSuggest').onclick=suggestTargets;
+function buildFromSelection(sel,K){
+  const err=document.getElementById('mErr');err.textContent='';
+  if(!sel.length){err.textContent='Tick at least one mission first.';return;}
+  const pool=FILTERED.length?FILTERED:DECKS;
+  // greedy: each pick maximises progress toward the still-open targets.
+  // fastScorer is valued via mix-bet simulation on a 300-deck shortlist (by s500 $).
+  const fsSel=sel.find(s=>s.m.lazy);
+  const fsX=fsSel?fsSel.target:8;
+  const fsShort=fsSel?new Set([...pool].sort((a,b)=>(b.sim_500_book||0)-(a.sim_500_book||0))
+    .slice(0,300).map(d=>String(d.deck_id))):null;
+  const dVal=(d,s)=>s.m.lazy
+    ?(fsShort.has(String(d.deck_id))?fsDeckProb(d,fsX,30):0)
+    :mVal(d,s.m);
+  const counting=sel.filter(s=>!s.m.streak&&!s.m.lazy);
+  const remaining=counting.map(s=>s.target);
+  const streakSel=sel.find(s=>s.m.streak);
+  const used=new Set(),chosen=[];
+  for(let k=0;k<K;k++){
+    let best=null,bestScore=-1;
+    for(const d of pool){
+      if(used.has(String(d.deck_id)))continue;
+      let score=0;
+      counting.forEach((s,i)=>{score+=Math.min(mVal(d,s.m),remaining[i])/s.target;});
+      if(streakSel)score+=0.35*mVal(d,streakSel.m);   // streaks want high match-win odds
+      if(fsSel)score+=0.5*dVal(d,fsSel);
+      if(score>bestScore){bestScore=score;best=d;}
+    }
+    if(!best)break;
+    used.add(String(best.deck_id));chosen.push(best);
+    counting.forEach((s,i)=>{remaining[i]=Math.max(0,remaining[i]-mVal(best,s.m));});
+  }
+  if(streakSel)chosen.sort((a,b)=>mVal(b,streakSel.m)-mVal(a,streakSel.m)); // best odds first
+  if(JOURNEY.list.length&&!confirm(`Replace the current journey (${JOURNEY.list.length} decks) with these ${chosen.length}?`))return;
+  JOURNEY.list=chosen.map(d=>({id:String(d.deck_id),res:null}));
+  jSave();journeyRender();
+  // completion preview
+  const rows=sel.map(s=>{
+    if(s.m.streak){
+      const p=streakProb(chosen.map(d=>mVal(d,s.m)),s.target);
+      return {label:`${s.m.label} ≥${s.target}`,target:s.target,
+        exp:(100*p).toFixed(0)+'% chance',ok:p>=0.5,stage:'—'};
+    }
+    if(s.m.lazy){
+      const pNone=chosen.reduce((a,d)=>a*(1-dVal(d,s)),1);
+      return {label:`${s.m.label.replace('X',s.target)} (X=${s.target})`,target:1,
+        exp:(100*(1-pNone)).toFixed(0)+'% chance ≥1 match',ok:(1-pNone)>=0.5,stage:'—'};
+    }
+    let cum=0,stage='not reached';
+    for(let i=0;i<chosen.length;i++){cum+=mVal(chosen[i],s.m);
+      if(cum>=s.target&&stage==='not reached')stage='stage '+(i+1);}
+    return {label:s.m.label+' × '+s.target,target:s.target,
+      exp:cum.toFixed(2)+' expected',ok:cum>=s.target,stage};
+  });
+  document.getElementById('mResult').innerHTML=
+    `<div class="afterpanel" style="display:block;margin-top:16px">
+      <h3>Journey built — ${chosen.length} decks loaded</h3>
+      <p>Expected mission delivery across the journey (weighted sim). Open the Journey tab for curves, the per-stage mission matrix and drag-reordering; Play journey to run it.</p>
+      <table><thead><tr><th style="text-align:left">Mission</th><th>Expected</th><th>Covered by</th><th>OK</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr><td style="text-align:left">${r.label}</td><td>${r.exp}</td>
+        <td>${r.stage}</td><td class="${r.ok?'delta-up':'delta-down'}">${r.ok?'✓':'✗ raise decks or lower target'}</td></tr>`).join('')}</tbody></table>
+      <p class="secnote" style="margin-top:8px">Decks: ${chosen.map(d=>d.deck_id).join(' · ')}</p>
+    </div>`;
+}
+document.getElementById('mBuild').onclick=()=>
+  buildFromSelection(mSelected(),Math.max(1,Math.min(30,+document.getElementById('mK').value||5)));
+
+// ── experience composer: tiers × comfort ratio (PRD §6.1) × effort × arc ──
+document.getElementById('mCompose').onclick=()=>{
+  const err=document.getElementById('mErr');err.textContent='';
+  const pool=FILTERED.length?FILTERED:DECKS;
+  const M=Math.max(1,Math.min(5,+document.getElementById('mCount').value||3));
+  const comfort=Math.max(0,Math.min(100,+document.getElementById('mComfort').value||70))/100;
+  const arc=document.getElementById('mArc').value;
+  // rate + tier per composable type (streak & fastScorer stay manual-only)
+  const cands=MBANK.filter(m=>!m.streak&&!m.lazy).map(m=>{
+    const avg=pool.reduce((a,d)=>a+mVal(d,m),0)/(pool.length||1);
+    return {m,avg,tier:tierOf(avg)};
+  });
+  const easy=cands.filter(c=>c.tier==='easy').sort((a,b)=>b.avg-a.avg);
+  const med=cands.filter(c=>c.tier==='medium').sort((a,b)=>b.avg-a.avg);
+  const hard=cands.filter(c=>c.tier==='hard').sort((a,b)=>b.avg-a.avg);
+  const nComf=Math.round(M*comfort);
+  const picks=[];
+  const take=(arr,n)=>{for(const c of arr){if(picks.length>=M||n<=0)break;
+    if(!picks.includes(c)){picks.push(c);n--;}}};
+  take(easy,nComf);take(med,Math.ceil((M-picks.length)/2));take(hard,M-picks.length);
+  take(med,M-picks.length);take(easy,M-picks.length);   // backfill if tiers ran dry
+  if(!picks.length){err.textContent='No composable missions in this pool.';return;}
+  // arc = order of the chain
+  if(arc==='quick')picks.sort((a,b)=>b.avg-a.avg);
+  else if(arc==='hardopen')picks.sort((a,b)=>a.avg-b.avg);
+  else if(arc==='mixed'){picks.sort((a,b)=>b.avg-a.avg);
+    const out=[];let i=0,j=picks.length-1;
+    while(i<=j){out.push(picks[i++]);if(i<=j)out.push(picks[j--]);}
+    picks.length=0;picks.push(...out);}
+  MORDER=picks.map(c=>c.m.type);
+  MBANK.forEach(m=>{const cb=document.querySelector(`input[data-mt="${m.type}"]`);
+    if(cb)cb.checked=MORDER.includes(m.type);});
+  suggestTargets();
+  buildFromSelection(mSelected(),Math.max(1,Math.min(30,+document.getElementById('mK').value||5)));
+};
+
+// Mission 3.0 cycle config export (PRD §3.2 / §9.2 data objects)
+document.getElementById('mExportM3').onclick=()=>{
+  const err=document.getElementById('mErr');err.textContent='';
+  const sel=mSelected();
+  if(!sel.length){err.textContent='Tick at least one mission first.';return;}
+  const pool=FILTERED.length?FILTERED:DECKS;
+  const TOK={easy:20,medium:30,hard:50};
+  const missionPool=sel.map(s=>{
+    const avg=s.m.lazy?fsPoolAvg(pool,s.target)
+      :pool.reduce((a,d)=>a+mVal(d,s.m),0)/(pool.length||1);
+    return {type:s.m.type,description:s.m.desc?s.m.desc(s.target):`${s.m.label} × ${s.target}`,
+      target:s.target,tier:tierOf(avg),tokens:TOK[tierOf(avg)],bonusCash:0};
+  });
+  const totalTokens=missionPool.reduce((a,m)=>a+m.tokens,0);
+  const cfg={
+    cycle:{startDate:null,endDate:null,recurrence:null,durationDays:6,missionRefreshHours:24},
+    missionCount:missionPool.length,
+    missionPool,
+    chestMilestones:[
+      {position:Math.ceil(totalTokens*0.33),bonusCash:0.50},
+      {position:Math.ceil(totalTokens*0.66),bonusCash:1.50},
+      {position:totalTokens,bonusCash:3.00},
+    ],
+    _generator:'Deck Room missions machine',
+    _basis:'targets sized by 200-run reasonable-player simulation (active sheet + human deviations); rewards are placeholders',
+  };
+  downloadJSON(cfg,'mission3_cycle_config.json');
+};
+document.getElementById('mExport').onclick=()=>{
+  const err=document.getElementById('mErr');err.textContent='';
+  const sel=mSelected();
+  if(!sel.length){err.textContent='Tick at least one mission first.';return;}
+  if(sel.length>5){err.textContent='The spec serves at most dailyCap = 5 missions per chain — untick down to 5.';return;}
+  const missions=sel.map((s,i)=>({index:i+1,type:s.m.type,target:s.target,
+    reward:{bonusCash:+(0.10+0.10*i).toFixed(2),mission_token:5+5*i}}));
+  const cfg={version:1,configType:'scripted',configId:'dm_deckroom_generated',
+    miniCurrency:{id:'mission_token',display:'Mission Token'},
+    dailyMissions:{visibleSlots:3,dailyCap:5},
+    rotation:['chain_deckroom_1'],loop:true,
+    chains:{chain_deckroom_1:{label:'Deck Room — sim-validated',missions}},
+    weeklyProgression:{numberOfDays:7,tiers:[
+      {tier:1,tokensRequired:20,reward:{bonusCash:0.50}},
+      {tier:2,tokensRequired:45,reward:{bonusCash:1.00}},
+      {tier:3,tokensRequired:75,reward:{bonusCash:2.00}},
+      {tier:4,tokensRequired:110,reward:{bonusCash:3.50,cosmetic:'week_badge'}}]}};
+  downloadJSON(cfg,'dm_deckroom_config.json');
+};
+
+// sticky table header offset = real nav height
+function setNavH(){document.documentElement.style.setProperty('--navh',
+  document.querySelector('nav').offsetHeight+'px');}
+window.addEventListener('resize',setNavH);
+
+// ── boot ──
+buildFilterUI();
+buildGenKpiUI();
+setGenRef(null);
+renderStrategy();
+journeyRender();
+setNavH();
+refreshPing();
+refresh();
+</script>
+</body>
+</html>
