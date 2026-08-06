@@ -304,6 +304,14 @@
     padding:2px 7px;cursor:pointer;font-size:11px;font-family:var(--mono)}
   .jmini:hover{border-color:var(--gold);color:var(--gold)}
   #jChartWin,#jChartNet{padding:16px}
+  /* mission room jump nav */
+  .mroomnav{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 14px;
+    padding:10px 12px;background:var(--panel);border:1px solid var(--gold-dim);border-radius:11px}
+  .mroomnav .act{padding:7px 12px;font-size:12px}
+  .mroomtag{font-family:var(--mono);font-size:10px;letter-spacing:.22em;color:var(--gold);
+    text-transform:uppercase;margin-right:4px}
+  .mflash{animation:mflash 1.1s ease-out}
+  @keyframes mflash{0%{box-shadow:0 0 0 2px var(--gold)}100%{box-shadow:0 0 0 2px transparent}}
   /* cycle builder */
   .daycard{background:var(--panel2);border:1px solid var(--line);border-radius:11px;
     padding:12px 14px;margin-bottom:10px}
@@ -379,7 +387,7 @@
   <button data-v="db">Database</button>
   <button data-v="strat">Strategy</button>
   <button data-v="gen">Generate</button>
-  <button data-v="missions">Missions</button>
+  <button data-v="missions">Mission Room</button>
   <button data-v="journey">Journey</button>
   <button data-v="play">Play a Deck</button>
   <div class="spacer"></div>
@@ -569,7 +577,14 @@
 
 <!-- ═══════════ MISSIONS MACHINE ═══════════ -->
 <section class="view" id="v-missions">
-  <div class="filterbox">
+  <div class="mroomnav">
+    <span class="mroomtag">MISSION ROOM</span>
+    <button class="act" data-mjump="m-inv">1 · Inventory</button>
+    <button class="act" data-mjump="m-compose">2 · Compose experience</button>
+    <button class="act" data-mjump="m-cycle">3 · Cycle builder (days)</button>
+    <button class="act" data-mjump="m-chest">4 · Chest path &amp; bar</button>
+  </div>
+  <div class="filterbox" id="m-inv">
     <div class="filterhead">
       <h3>Mission inventory</h3>
       <div class="exportrow">
@@ -581,7 +596,7 @@
       </div>
     </div>
     <div class="err" id="mErr"></div>
-    <div class="exportrow" style="margin:6px 0 4px;align-items:flex-end">
+    <div class="exportrow" id="m-compose" style="margin:6px 0 4px;align-items:flex-end">
       <span class="genstat" style="align-self:center">COMPOSE EXPERIENCE</span>
       <label class="jreq">missions<input type="number" id="mCount" value="3" min="1" max="5"></label>
       <label class="jreq" title="How hard completion should feel — scales every target against the simulated expected events across the journey">effort
@@ -618,7 +633,7 @@
   <div id="mResult"></div>
 
   <!-- ── cycle builder: flexible day blocks + chest path ── -->
-  <h2 class="sec">Cycle builder <span class="matchcount" id="cySummary"></span></h2>
+  <h2 class="sec" id="m-cycle">Cycle builder <span class="matchcount" id="cySummary"></span></h2>
   <p class="secnote">Build the multi-day experience: each <b>day</b> holds its own missions and the decks the player will be served that day. Add days in blocks (3 days now, 4 more later — any mix), compose each day's missions, then <b>Fit decks</b> to pick the decks that maximise the chance of completing that day. Completion odds come from the weighted simulation (Poisson on expected events for counts, exact DP for match-win and streak missions).</p>
   <div class="filterbox">
     <div class="filterhead">
@@ -638,7 +653,7 @@
     <div id="cyDays"></div>
   </div>
 
-  <h2 class="sec">Chest path &amp; progress bar</h2>
+  <h2 class="sec" id="m-chest">Chest path &amp; progress bar</h2>
   <p class="secnote">Layer 2 of Mission 3.0: tokens earned from daily missions fill the meta-progress bar and unlock Bonus-Cash chests. Edit thresholds and amounts here — the bar shows each chest at its token position, the <span style="color:var(--gold)">expected</span> token progress (Σ tokens × completion odds) and the <span class="dim">max</span> progress if every mission completes, with day markers so you can see which day unlocks which chest.</p>
   <div class="filterbox">
     <div class="filterhead">
@@ -3447,6 +3462,19 @@ function cycleRender(){
 }
 
 // ── cycle wiring ──
+// mission-room jump nav
+document.querySelectorAll('button[data-mjump]').forEach(b=>b.onclick=()=>{
+  const el=document.getElementById(b.dataset.mjump);
+  if(!el)return;
+  const y=Math.max(0,el.getBoundingClientRect().top+scrollY
+    -(document.querySelector('nav').offsetHeight+56));
+  const before=scrollY;
+  try{ window.scrollTo({top:y,behavior:'smooth'}); }catch(_){}
+  // some engines no-op on behavior:'smooth' — fall back to an instant jump
+  setTimeout(()=>{ if(Math.abs(scrollY-before)<4) window.scrollTo(0,y); },60);
+  el.classList.add('mflash');
+  setTimeout(()=>el.classList.remove('mflash'),1100);
+});
 document.querySelectorAll('button[data-cyadd]').forEach(b=>
   b.onclick=()=>addDays(+b.dataset.cyadd));
 document.getElementById('cyClear').onclick=()=>{
