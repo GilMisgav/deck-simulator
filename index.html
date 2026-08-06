@@ -304,6 +304,41 @@
     padding:2px 7px;cursor:pointer;font-size:11px;font-family:var(--mono)}
   .jmini:hover{border-color:var(--gold);color:var(--gold)}
   #jChartWin,#jChartNet{padding:16px}
+  /* cycle builder */
+  .daycard{background:var(--panel2);border:1px solid var(--line);border-radius:11px;
+    padding:12px 14px;margin-bottom:10px}
+  .dayhead{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  .daytag{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--gold);background:var(--gold-soft);border:1px solid var(--gold-dim);
+    border-radius:6px;padding:3px 9px}
+  .daycard table{font-size:12px;margin-top:4px}
+  .daycard th{position:static;box-shadow:none;cursor:default;padding:4px 8px}
+  .daycard td{padding:4px 8px}
+  .daycard input[type=number]{width:62px;padding:4px 7px}
+  .pbadge{font-family:var(--mono);font-size:11px;font-weight:700;border-radius:5px;padding:2px 7px}
+  .pgood{background:var(--win);color:#06231a}
+  .pmid{background:var(--gold);color:#141006}
+  .pbad{background:var(--lose);color:#fff}
+  /* meta-progress bar */
+  .metabar{position:relative;height:104px;margin:10px 0 4px;padding:0 26px}
+  .metatrack{position:absolute;top:52px;left:26px;right:26px;height:16px;background:var(--inset);
+    border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .metafill{position:absolute;top:0;bottom:0;left:0;background:linear-gradient(90deg,var(--gold-dim),var(--gold));
+    border-radius:9px 0 0 9px}
+  .metamax{position:absolute;top:0;bottom:0;left:0;background:rgba(239,230,208,.14)}
+  .chestmk{position:absolute;top:0;transform:translateX(-50%);text-align:center;
+    font-family:var(--mono);font-size:9.5px;color:var(--muted);white-space:nowrap;
+    display:flex;flex-direction:column;align-items:center;gap:2px}
+  .chestmk i{font-style:normal;font-size:17px;line-height:1}
+  .chestmk b{font-weight:600;color:var(--text)}
+  .chestmk.hit b{color:var(--gold)}
+  .chestmk:not(.hit) i{opacity:.45;filter:grayscale(1)}
+  .chestmk::after{content:"";position:absolute;left:50%;top:100%;width:1px;height:8px;
+    background:var(--line2)}
+  .daymk{position:absolute;top:74px;transform:translateX(-50%);font-family:var(--mono);
+    font-size:9px;color:var(--muted);white-space:nowrap}
+  .daymk::before{content:"";position:absolute;left:50%;top:-7px;width:1px;height:7px;
+    background:var(--line2)}
   .jdrag{cursor:grab;color:var(--muted);font-size:13px;user-select:none;margin-right:2px}
   #jTable tr.datarow{cursor:default}
   #jTable tr.dragging{opacity:.35}
@@ -581,6 +616,50 @@
     </div>
   </div>
   <div id="mResult"></div>
+
+  <!-- ── cycle builder: flexible day blocks + chest path ── -->
+  <h2 class="sec">Cycle builder <span class="matchcount" id="cySummary"></span></h2>
+  <p class="secnote">Build the multi-day experience: each <b>day</b> holds its own missions and the decks the player will be served that day. Add days in blocks (3 days now, 4 more later — any mix), compose each day's missions, then <b>Fit decks</b> to pick the decks that maximise the chance of completing that day. Completion odds come from the weighted simulation (Poisson on expected events for counts, exact DP for match-win and streak missions).</p>
+  <div class="filterbox">
+    <div class="filterhead">
+      <h3>Days</h3>
+      <div class="exportrow">
+        <label class="jreq">decks / day<input type="number" id="cyDecksPerDay" value="2" min="1" max="10"></label>
+        <button class="act" data-cyadd="1">+1 day</button>
+        <button class="act" data-cyadd="3">+3 days</button>
+        <button class="act" data-cyadd="4">+4 days</button>
+        <button class="act" data-cyadd="7">+7 days</button>
+        <button class="act primary" id="cyFitAll" title="Pick the best decks for every day from the current Database filter">Fit decks — all days</button>
+        <button class="act" id="cyExport" title="Download the whole cycle: per-day missions, targets, tokens, fitted decks and the chest path">Export cycle config</button>
+        <button class="act" id="cyClear">Clear cycle</button>
+      </div>
+    </div>
+    <div class="err" id="cyErr"></div>
+    <div id="cyDays"></div>
+  </div>
+
+  <h2 class="sec">Chest path &amp; progress bar</h2>
+  <p class="secnote">Layer 2 of Mission 3.0: tokens earned from daily missions fill the meta-progress bar and unlock Bonus-Cash chests. Edit thresholds and amounts here — the bar shows each chest at its token position, the <span style="color:var(--gold)">expected</span> token progress (Σ tokens × completion odds) and the <span class="dim">max</span> progress if every mission completes, with day markers so you can see which day unlocks which chest.</p>
+  <div class="filterbox">
+    <div class="filterhead">
+      <h3>Chests</h3>
+      <div class="exportrow">
+        <button class="act" id="cyChestAdd">+ chest</button>
+        <button class="act" id="cyChestAuto" title="Space chests evenly across the cycle's total token supply (33/66/100%)">Auto-space 3</button>
+        <span class="genstat" id="cyTokenInfo"></span>
+      </div>
+    </div>
+    <div id="cyBar"></div>
+    <div class="tablewrap" style="margin-top:14px">
+    <table id="cyChestTable"><thead><tr>
+      <th>#</th><th title="tokens required to unlock">Token threshold</th>
+      <th title="Bonus Cash awarded by this chest">Bonus Cash $</th>
+      <th title="first day the expected token total reaches this chest">Unlocks (expected)</th>
+      <th title="first day the maximum token total could reach it">Earliest (max)</th>
+      <th></th>
+    </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
 </section>
 
 <!-- ═══════════ JOURNEY ═══════════ -->
@@ -1398,7 +1477,7 @@ function switchView(v){
   document.querySelectorAll('nav button[data-v]').forEach(b=>b.classList.toggle('on', b.dataset.v===v));
   document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on', s.id==='v-'+v));
   if (v==='journey' && typeof journeyRender==='function') journeyRender();
-  if (v==='missions' && typeof missionsRender==='function') missionsRender();
+  if (v==='missions' && typeof missionsRender==='function'){ missionsRender(); cycleRender(); }
 }
 document.querySelectorAll('nav button[data-v]').forEach(b=> b.onclick = ()=>switchView(b.dataset.v));
 
@@ -3150,6 +3229,326 @@ document.getElementById('mExport').onclick=()=>{
       {tier:3,tokensRequired:75,reward:{bonusCash:2.00}},
       {tier:4,tokensRequired:110,reward:{bonusCash:3.50,cosmetic:'week_badge'}}]}};
   downloadJSON(cfg,'dm_deckroom_config.json');
+};
+
+// ═══════════════════════════════════════════════════════ CYCLE BUILDER
+// Flexible day blocks: each day = its own missions + the decks served that day.
+// Completion odds: Poisson on Σ expected events (count missions), exact
+// Poisson-binomial DP for per-deck probability missions (winPVP / Fast Scorer),
+// streak DP for winPvpStreak.
+const CKEY='deckroom_cycle';
+const TOKENS_BY_TIER={easy:20,medium:30,hard:50};
+let CYCLE=(()=>{ try{
+    const c=JSON.parse(localStorage.getItem(CKEY));
+    if(c&&Array.isArray(c.days))return {days:c.days,chests:c.chests||[]};
+  }catch(e){} return {days:[],chests:[]}; })();
+function cySave(){ try{localStorage.setItem(CKEY,JSON.stringify(CYCLE));}catch(e){} }
+
+function poisAtLeast(lam,T){
+  if(T<=0)return 1;
+  if(lam<=0)return 0;
+  let term=Math.exp(-lam),cdf=term;
+  for(let k=1;k<T;k++){term*=lam/k;cdf+=term;}
+  return Math.max(0,Math.min(1,1-cdf));
+}
+function pbAtLeast(ps,T){          // exact Poisson-binomial P(X ≥ T)
+  if(T<=0)return 1;
+  let dist=[1];
+  for(const p of ps){
+    const nd=new Array(dist.length+1).fill(0);
+    dist.forEach((v,k)=>{nd[k]+=v*(1-p);nd[k+1]+=v*p;});
+    dist=nd;
+  }
+  return dist.slice(Math.min(T,dist.length)).reduce((a,b)=>a+b,0);
+}
+const mByType=t=>MBANK.find(m=>m.type===t);
+function deckRate(d,m,X){          // expected events (or probability) for one deck
+  if(!d)return 0;
+  if(m.lazy)return fsDeckProb(d,X||8,30);
+  return mVal(d,m);
+}
+// P(complete) for one mission given the day's decks
+function missionProb(mi,decks){
+  const m=mByType(mi.type);if(!m)return 0;
+  const ds=decks.map(id=>BYID.get(String(id))).filter(Boolean);
+  if(!ds.length)return 0;
+  const T=Math.max(1,mi.target|0);
+  if(m.streak)return streakProb(ds.map(d=>mVal(d,m)),T);
+  if(m.pct||m.lazy)return pbAtLeast(ds.map(d=>deckRate(d,m,mi.target)),m.lazy?1:T);
+  return poisAtLeast(ds.reduce((a,d)=>a+mVal(d,m),0),T);
+}
+function dayStats(day){
+  const per=(day.missions||[]).map(mi=>{
+    const m=mByType(mi.type);
+    const p=missionProb(mi,day.decks||[]);
+    const tok=mi.tokens!=null?mi.tokens:TOKENS_BY_TIER.medium;
+    return {mi,m,p,tok};
+  });
+  const all=per.reduce((a,x)=>a*x.p,1);
+  return {per,all,
+    tokMax:per.reduce((a,x)=>a+x.tok,0),
+    tokExp:per.reduce((a,x)=>a+x.tok*x.p,0)};
+}
+const pClass=p=>p>=0.7?'pgood':p>=0.35?'pmid':'pbad';
+const pTxt=p=>(100*p).toFixed(0)+'%';
+
+// greedy fit: pick decks that maximise the day's joint completion probability
+function fitDay(day,pool){
+  const K=Math.max(1,day.deckCount||2);
+  if(!(day.missions||[]).length)return;
+  const cands=pool.length>1500
+    ? [...pool].sort((a,b)=>(b.sim_book||0)-(a.sim_book||0)).slice(0,1500)
+    : pool;
+  const chosen=[];
+  for(let k=0;k<K;k++){
+    let best=null,bestScore=-Infinity;   // log-space scores are negative
+    for(const d of cands){
+      const id=String(d.deck_id);
+      if(chosen.includes(id))continue;
+      const trial=[...chosen,id];
+      let score=0;
+      for(const mi of day.missions){
+        const p=missionProb(mi,trial);
+        score+=Math.log(Math.max(p,1e-9));      // joint probability, log-space
+      }
+      if(score>bestScore){bestScore=score;best=id;}
+    }
+    if(!best)break;
+    chosen.push(best);
+  }
+  day.decks=chosen;
+}
+
+function composeDayMissions(dayIdx){
+  // reuse the composer controls: count / effort / comfort / arc.
+  // dayIdx rotates each tier list so consecutive days don't repeat the same
+  // mission types (PRD §6.1: "avoid repeating the same type in consecutive refreshes").
+  const rot=(arr,n)=>arr.length?arr.slice(n%arr.length).concat(arr.slice(0,n%arr.length)):arr;
+  const R=(dayIdx||0);
+  const pool=FILTERED.length?FILTERED:DECKS;
+  const M=Math.max(1,Math.min(5,+document.getElementById('mCount').value||3));
+  const comfort=Math.max(0,Math.min(100,+document.getElementById('mComfort').value||70))/100;
+  const eff=effortMult();
+  const K=Math.max(1,+document.getElementById('cyDecksPerDay').value||2);
+  const cands=MBANK.filter(m=>!m.streak&&!m.lazy).map(m=>{
+    const avg=pool.reduce((a,d)=>a+mVal(d,m),0)/(pool.length||1);
+    return {m,avg,tier:tierOf(avg)};
+  });
+  const byTier=t=>rot(cands.filter(c=>c.tier===t).sort((a,b)=>b.avg-a.avg),R);
+  const picks=[];
+  const take=(arr,n)=>{for(const c of arr){if(picks.length>=M||n<=0)break;
+    if(!picks.some(p=>p.m.type===c.m.type)){picks.push(c);n--;}}};
+  take(byTier('easy'),Math.round(M*comfort));
+  take(byTier('medium'),Math.ceil((M-picks.length)/2));
+  take(byTier('hard'),M-picks.length);
+  take(byTier('medium'),M-picks.length);take(byTier('easy'),M-picks.length);
+  return picks.map(c=>({type:c.m.type,
+    target:Math.max(1,Math.round(eff*K*c.avg)),
+    tokens:TOKENS_BY_TIER[c.tier]}));
+}
+function addDays(n){
+  const K=Math.max(1,+document.getElementById('cyDecksPerDay').value||2);
+  for(let i=0;i<n;i++)
+    CYCLE.days.push({missions:composeDayMissions(CYCLE.days.length),deckCount:K,decks:[]});
+  cySave();cycleRender();
+}
+function autoChests(){
+  // raw (unrounded) expected total — flooring the raw sum keeps the last chest reachable
+  const raw=CYCLE.days.reduce((a,d)=>a+dayStats(d).tokExp,0);
+  if(raw<1){document.getElementById('cyErr').textContent='Add days with missions first.';return;}
+  CYCLE.chests=[
+    {tokens:Math.max(1,Math.floor(raw*0.33)),cash:0.50},
+    {tokens:Math.max(2,Math.floor(raw*0.66)),cash:1.50},
+    {tokens:Math.max(3,Math.floor(raw)),cash:3.00}];
+  cySave();cycleRender();
+}
+
+function cycleRender(){
+  const pool=FILTERED.length?FILTERED:DECKS;
+  const stats=CYCLE.days.map(d=>dayStats(d));
+  const cumExp=[],cumMax=[];
+  let ae=0,am=0;
+  stats.forEach(s=>{ae+=s.tokExp;am+=s.tokMax;cumExp.push(ae);cumMax.push(am);});
+  const totalExp=ae,totalMax=am;
+  document.getElementById('cySummary').textContent=CYCLE.days.length
+    ? `${CYCLE.days.length} days · ${CYCLE.days.reduce((a,d)=>a+(d.decks||[]).length,0)} decks fitted · ${Math.round(totalExp)} expected tokens`
+    : '';
+  // ── day cards ──
+  document.getElementById('cyDays').innerHTML=CYCLE.days.length?CYCLE.days.map((day,i)=>{
+    const s=stats[i];
+    const rows=s.per.map((x,j)=>`<tr>
+      <td style="text-align:left">${x.m?x.m.label:x.mi.type}</td>
+      <td><input type="number" min="1" value="${x.mi.target}" data-cyt="${i}:${j}" title="target"></td>
+      <td><input type="number" min="0" value="${x.tok}" data-cytok="${i}:${j}" title="tokens granted"></td>
+      <td><span class="pbadge ${pClass(x.p)}">${pTxt(x.p)}</span></td>
+      <td><button class="jmini" data-cyrm="${i}:${j}" title="remove mission">✕</button></td></tr>`).join('');
+    const deckTxt=(day.decks||[]).length
+      ? day.decks.map(id=>`<span class="dim">${id}</span>`).join(' · ')
+      : '<span class="dim">no decks fitted yet</span>';
+    return `<div class="daycard">
+      <div class="dayhead">
+        <span class="daytag">Day ${i+1}</span>
+        <label class="jreq" style="flex-direction:row;align-items:center;gap:6px">decks
+          <input type="number" min="1" max="10" value="${day.deckCount||2}" data-cydc="${i}"></label>
+        <span class="genstat">all missions: <b class="pbadge ${pClass(s.all)}">${pTxt(s.all)}</b></span>
+        <span class="genstat">tokens: <b>${s.tokExp.toFixed(0)}</b> exp / ${s.tokMax} max</span>
+        <span style="margin-left:auto;display:flex;gap:6px">
+          <button class="act" data-cycompose="${i}">Compose missions</button>
+          <button class="act" data-cyfit="${i}">Fit decks</button>
+          <button class="act" data-cyplay="${i}" title="Load this day's decks as the Journey">Play day</button>
+          <button class="jmini" data-cydup="${i}" title="duplicate day">⧉</button>
+          <button class="jmini" data-cyday-rm="${i}" title="remove day">✕</button>
+        </span>
+      </div>
+      ${s.per.length?`<table><thead><tr><th style="text-align:left">Mission</th><th>Target</th>
+        <th>Tokens</th><th title="probability of completing this mission on this day">P(complete)</th><th></th>
+        </tr></thead><tbody>${rows}</tbody></table>`
+        :'<p class="secnote" style="margin:4px 0">No missions — press “Compose missions”, or tick missions above and use “+ add ticked”.</p>'}
+      <div class="exportrow" style="margin-top:8px">
+        <button class="act" data-cyaddsel="${i}" title="Append the missions ticked in the inventory above">+ add ticked missions</button>
+        <span class="genstat">decks: ${deckTxt}</span>
+      </div>
+    </div>`;
+  }).join(''):'<p class="secnote">No days yet — add a block above (+3 days, +4 days…). Each day gets missions composed from the effort/comfort controls, then fit decks to it.</p>';
+
+  // ── chest bar ──
+  const chests=[...CYCLE.chests].sort((a,b)=>a.tokens-b.tokens);
+  const scale=Math.max(totalMax,chests.length?chests[chests.length-1].tokens:0,1);
+  const pct=v=>Math.max(0,Math.min(100,100*v/scale));
+  document.getElementById('cyTokenInfo').innerHTML=CYCLE.days.length
+    ? `expected <b>${Math.round(totalExp)}</b> · max <b>${totalMax}</b> tokens over ${CYCLE.days.length} days`
+    : 'add days to size the bar';
+  document.getElementById('cyBar').innerHTML=`
+    <div class="metabar">
+      <div class="metatrack">
+        <div class="metamax" style="width:${pct(totalMax)}%"></div>
+        <div class="metafill" style="width:${pct(totalExp)}%"></div>
+      </div>
+      ${chests.map(c=>{const x=pct(c.tokens);
+        const shift=x>92?'-88%':x<8?'-12%':'-50%';
+        return `<div class="chestmk ${totalExp>=c.tokens?'hit':''}"
+          style="left:calc(26px + (100% - 52px) * ${x/100});transform:translateX(${shift})"
+          title="${totalExp>=c.tokens?'expected to unlock':'beyond expected tokens'}">
+          <i>${totalExp>=c.tokens?'🎁':'🔒'}</i><b>${c.tokens}t</b>$${(+c.cash).toFixed(2)}</div>`;}).join('')}
+      ${cumExp.map((v,i)=>`<div class="daymk" title="cumulative expected tokens after day ${i+1}: ${Math.round(v)}"
+        style="left:calc(26px + (100% - 52px) * ${pct(v)/100})">d${i+1}</div>`).join('')}
+    </div>`;
+  const firstDay=(arr,thr)=>{const k=arr.findIndex(v=>v>=thr);return k<0?null:k+1;};
+  document.querySelector('#cyChestTable tbody').innerHTML=chests.length?chests.map((c,i)=>{
+    const de=firstDay(cumExp,c.tokens),dm=firstDay(cumMax,c.tokens);
+    return `<tr>
+      <td>${i+1}</td>
+      <td><input type="number" min="1" value="${c.tokens}" data-cyct="${i}"></td>
+      <td><input type="number" min="0" step="0.05" value="${(+c.cash).toFixed(2)}" data-cycc="${i}"></td>
+      <td class="${de?'delta-up':'delta-down'}">${de?'day '+de:'not reached'}</td>
+      <td class="dim">${dm?'day '+dm:'unreachable'}</td>
+      <td><button class="jmini" data-cychrm="${i}">✕</button></td></tr>`;
+  }).join(''):'<tr><td colspan="6" class="dim" style="text-align:left">No chests — press “+ chest” or “Auto-space 3”.</td></tr>';
+}
+
+// ── cycle wiring ──
+document.querySelectorAll('button[data-cyadd]').forEach(b=>
+  b.onclick=()=>addDays(+b.dataset.cyadd));
+document.getElementById('cyClear').onclick=()=>{
+  if(CYCLE.days.length&&!confirm(`Clear the whole cycle (${CYCLE.days.length} days)?`))return;
+  CYCLE={days:[],chests:[]};cySave();cycleRender();
+};
+document.getElementById('cyFitAll').onclick=()=>{
+  const err=document.getElementById('cyErr');err.textContent='';
+  if(!CYCLE.days.length){err.textContent='Add days first.';return;}
+  const pool=FILTERED.length?FILTERED:DECKS;
+  const t0=performance.now();
+  CYCLE.days.forEach(d=>fitDay(d,pool));
+  cySave();cycleRender();
+  err.textContent=`Fitted ${CYCLE.days.length} days in ${Math.round(performance.now()-t0)}ms from ${fmt(pool.length)} candidate decks.`;
+};
+document.getElementById('cyChestAdd').onclick=()=>{
+  const last=CYCLE.chests.length?Math.max(...CYCLE.chests.map(c=>c.tokens)):0;
+  CYCLE.chests.push({tokens:last+40,cash:1.00});cySave();cycleRender();
+};
+document.getElementById('cyChestAuto').onclick=autoChests;
+document.getElementById('cyDays').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const d=b.dataset;
+  if(d.cycompose!=null){CYCLE.days[+d.cycompose].missions=composeDayMissions(+d.cycompose);}
+  else if(d.cyfit!=null){fitDay(CYCLE.days[+d.cyfit],FILTERED.length?FILTERED:DECKS);}
+  else if(d.cyplay!=null){
+    const day=CYCLE.days[+d.cyplay];
+    if(!(day.decks||[]).length){document.getElementById('cyErr').textContent='Fit decks for this day first.';return;}
+    JOURNEY.list=day.decks.map(id=>({id:String(id),res:null}));
+    jSave();journeyRender();switchView('journey');return;
+  }
+  else if(d.cydup!=null){CYCLE.days.splice(+d.cydup+1,0,JSON.parse(JSON.stringify(CYCLE.days[+d.cydup])));}
+  else if(d['cyday-rm']!=null){CYCLE.days.splice(+d['cyday-rm'],1);}
+  else if(d.cyrm!=null){const[i,j]=d.cyrm.split(':').map(Number);CYCLE.days[i].missions.splice(j,1);}
+  else if(d.cyaddsel!=null){
+    const i=+d.cyaddsel;const sel=mSelected();
+    if(!sel.length){document.getElementById('cyErr').textContent='Tick missions in the inventory above first.';return;}
+    const pool=FILTERED.length?FILTERED:DECKS;
+    for(const s of sel){
+      if(CYCLE.days[i].missions.some(x=>x.type===s.m.type))continue;
+      const avg=s.m.lazy?fsPoolAvg(pool,s.target)
+        :pool.reduce((a,dd)=>a+mVal(dd,s.m),0)/(pool.length||1);
+      CYCLE.days[i].missions.push({type:s.m.type,target:s.target,
+        tokens:TOKENS_BY_TIER[tierOf(avg)]});
+    }
+  }
+  else return;
+  cySave();cycleRender();
+});
+document.getElementById('cyDays').addEventListener('change',e=>{
+  const t=e.target;if(!t.dataset)return;
+  if(t.dataset.cydc!=null)CYCLE.days[+t.dataset.cydc].deckCount=Math.max(1,+t.value||1);
+  else if(t.dataset.cyt!=null){const[i,j]=t.dataset.cyt.split(':').map(Number);
+    CYCLE.days[i].missions[j].target=Math.max(1,+t.value||1);}
+  else if(t.dataset.cytok!=null){const[i,j]=t.dataset.cytok.split(':').map(Number);
+    CYCLE.days[i].missions[j].tokens=Math.max(0,+t.value||0);}
+  else return;
+  cySave();cycleRender();
+});
+document.getElementById('cyChestTable').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-cychrm]');if(!b)return;
+  const sorted=[...CYCLE.chests].sort((a,b2)=>a.tokens-b2.tokens);
+  const target=sorted[+b.dataset.cychrm];
+  CYCLE.chests=CYCLE.chests.filter(c=>c!==target);
+  cySave();cycleRender();
+});
+document.getElementById('cyChestTable').addEventListener('change',e=>{
+  const t=e.target;if(!t.dataset)return;
+  const sorted=[...CYCLE.chests].sort((a,b)=>a.tokens-b.tokens);
+  if(t.dataset.cyct!=null)sorted[+t.dataset.cyct].tokens=Math.max(1,+t.value||1);
+  else if(t.dataset.cycc!=null)sorted[+t.dataset.cycc].cash=Math.max(0,+t.value||0);
+  else return;
+  cySave();cycleRender();
+});
+document.getElementById('cyExport').onclick=()=>{
+  const err=document.getElementById('cyErr');err.textContent='';
+  if(!CYCLE.days.length){err.textContent='Add days first.';return;}
+  const stats=CYCLE.days.map(d=>dayStats(d));
+  const cfg={
+    cycle:{durationDays:CYCLE.days.length,missionRefreshHours:24,
+      startDate:null,endDate:null,recurrence:null},
+    days:CYCLE.days.map((day,i)=>({
+      day:i+1,
+      missionCount:(day.missions||[]).length,
+      decksServed:day.decks||[],
+      missions:(day.missions||[]).map((mi,j)=>{
+        const m=mByType(mi.type),x=stats[i].per[j];
+        return {type:mi.type,
+          description:m&&m.desc?m.desc(mi.target):`${mi.type} × ${mi.target}`,
+          target:mi.target,tokens:x.tok,bonusCash:0,
+          simCompletionProb:+x.p.toFixed(3)};
+      }),
+      expectedTokens:+stats[i].tokExp.toFixed(1),maxTokens:stats[i].tokMax,
+      allMissionsProb:+stats[i].all.toFixed(3)})),
+    chestMilestones:[...CYCLE.chests].sort((a,b)=>a.tokens-b.tokens)
+      .map(c=>({position:c.tokens,bonusCash:+(+c.cash).toFixed(2)})),
+    totals:{expectedTokens:+stats.reduce((a,s)=>a+s.tokExp,0).toFixed(1),
+      maxTokens:stats.reduce((a,s)=>a+s.tokMax,0)},
+    _generator:'Deck Room cycle builder',
+    _basis:'per-day decks fitted from the simulated mission rates (200-run reasonable-player model, active strategy sheet incl. human deviations); completion odds = Poisson on expected events, exact DP for match-win/streak missions',
+  };
+  downloadJSON(cfg,`mission3_cycle_${CYCLE.days.length}days.json`);
 };
 
 // sticky table header offset = real nav height
