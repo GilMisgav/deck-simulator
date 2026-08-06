@@ -94,6 +94,29 @@ anyone opening it gets the journey loaded (with a confirm if it would replace
 theirs, and a warning for decks missing from their database). Share links built
 on localhost automatically point at the online copy.
 
+## Cycle builder & chest path (Missions tab)
+
+Below the mission inventory, the **cycle builder** composes the multi-day experience:
+
+- **Flexible day blocks** — `+1 / +3 / +4 / +7 days`, added in any mix (3 days now, 4 more
+  later). Each day carries its own missions (targets + token values, editable inline),
+  its own deck count, and can be composed / duplicated / removed independently. Mission
+  types rotate per day so consecutive days don't repeat (PRD §6.1).
+- **Deck fitting** — `Fit decks` (per day or all days) greedily picks the decks from the
+  current Database filter that **maximise the day's joint completion probability**
+  (log-space search). Every mission shows `P(complete)` and each day shows `P(all
+  missions)`. Odds model: Poisson on Σ expected events for count missions, exact
+  Poisson-binomial DP for per-deck probability missions (winPVP / Fast Scorer), streak DP
+  for winPvpStreak. `Play day` loads that day's decks straight into the Journey.
+- **Chest path & progress bar** — edit chest token thresholds and Bonus-Cash amounts
+  (add/remove/auto-space). The meta-progress bar draws every chest at its token position,
+  the **expected** fill (Σ tokens × completion odds) against the **max** fill, and day
+  markers, so you can see which day unlocks which chest; the table lists expected vs
+  earliest-possible unlock day per chest.
+- **Export cycle config** — full multi-day JSON: per-day missions with descriptions,
+  targets, tokens and simulated completion probability, the decks served each day,
+  per-day expected/max tokens, and the chest milestone path.
+
 ## Missions machine
 
 The bank merges **Mission 3.0 (PRD, `Mission_3_0_Blackjack.pdf`)** and the daily-missions
