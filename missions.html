@@ -182,6 +182,7 @@
   <span class="lbl" style="margin-left:14px">Suits</span>
   <button id="suitClient" title="How the SHIPPED client paints suits: position % 4 (Card.swift parseServerDeck). Cards dealt together never share a suit — 6 bank types are impossible. Use this for real bundles.">Client (shipped)</button>
   <button id="suitRandom" title="Real-cards assumption: random suit arrangement per run. Use only if the client's suit painting changes.">Random</button>
+  <span id="liveChip" style="margin-left:auto;display:inline-flex;gap:6px;align-items:center;font-family:var(--mono);font-size:11px"></span>
 </div>
 <div class="err" id="err"></div>
 
@@ -551,7 +552,8 @@ const SKEY='mission_studio';
 let ST=(()=>{try{const s=JSON.parse(localStorage.getItem(SKEY));
   if(s&&Array.isArray(s.days))return s;}catch(e){}
   return {days:[],chests:[],active:0};})();
-const save=()=>{try{localStorage.setItem(SKEY,JSON.stringify(ST));}catch(e){}};
+const save=()=>{try{localStorage.setItem(SKEY,JSON.stringify(ST));}catch(e){}
+  if(typeof livePush==='function')livePush();};
 const tokDefault=rate=>rate>=1.5?5:rate>=0.3?10:20;
 
 /* ═══════════════ math on days ═══════════════ */
@@ -1744,10 +1746,123 @@ document.getElementById('shareBtn').onclick=async()=>{
   }catch(e){}
 })();
 
+/* ═══════════════ live collaboration ═══════════════
+   Shared room on jsonblob.com (public JSON store): unguessable link, no
+   password — anyone with the link sees and edits the plan. Last write wins;
+   the page polls every 4s and pushes local edits after a 1.2s debounce. */
+const LIVE={id:null,v:0,by:'',timer:null,pushT:null,busy:false,last:''};
+const LIVE_API='https://jsonblob.com/api/jsonBlob';
+function liveName(){
+  let n=null;
+  try{n=localStorage.getItem('studio_name');}catch(e){}
+  if(!n){
+    try{n=(prompt('Your name (shown to collaborators):')||'anon').slice(0,24);}
+    catch(e){n='anon';}
+    try{localStorage.setItem('studio_name',n);}catch(e){}
+  }
+  return n;
+}
+function showLink(err,msg){
+  err.innerHTML=`<span class="ok">${msg}</span>
+    <input value="${location.href}" readonly style="width:340px;font-family:var(--mono);font-size:11px"
+      onclick="this.select()"> `;
+}
+const liveEnvelope=()=>({format:'studio-live',v:LIVE.v,by:liveName(),
+  at:new Date().toISOString(),state:ST});
+function applyRemote(j){
+  LIVE.busy=true;
+  try{
+    ST=j.state;LIVE.v=j.v;LIVE.by=j.by||'';LIVE.last=JSON.stringify(ST);
+    try{localStorage.setItem(SKEY,LIVE.last);}catch(e){}
+    const se=document.getElementById('slotsN');if(se)se.value=ST.slots||3;
+    const sk=document.getElementById('stakeN');if(sk)sk.value=ST.stake||1;
+    render();
+  }finally{LIVE.busy=false;}
+}
+async function liveStart(){
+  const err=document.getElementById('err');
+  try{
+    LIVE.v=1;
+    const r=await fetch(LIVE_API,{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(liveEnvelope())});
+    const id=(r.headers.get('Location')||'').split('/').pop();
+    if(!r.ok||!id)throw new Error('HTTP '+r.status);
+    LIVE.id=id;LIVE.last=JSON.stringify(ST);
+    location.hash='room='+id;
+    liveLoop();renderLive();
+    let copied=false;
+    try{await navigator.clipboard.writeText(location.href);copied=true;}catch(e){}
+    if(copied)err.innerHTML='<span class="ok">Live room created and link copied — anyone opening it sees and edits this plan in real time.</span>';
+    else showLink(err,'Live room created — copy the link:');
+  }catch(e){LIVE.id=null;err.textContent='Could not create the live room ('+e.message+').';renderLive();}
+}
+async function liveJoin(id){
+  const err=document.getElementById('err');
+  try{
+    const r=await fetch(LIVE_API+'/'+id);
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    if(!j||j.format!=='studio-live')throw new Error('not a studio room');
+    LIVE.id=id;
+    applyRemote(j);
+    liveLoop();renderLive();
+    err.innerHTML='<span class="ok">Joined the live room — you see everyone\'s changes and they see yours.</span>';
+  }catch(e){err.textContent='Could not join the live room ('+e.message+').';}
+}
+function liveLoop(){
+  clearInterval(LIVE.timer);
+  LIVE.timer=setInterval(async()=>{
+    if(!LIVE.id)return;
+    try{
+      const j=await(await fetch(LIVE_API+'/'+LIVE.id)).json();
+      if(j&&j.format==='studio-live'&&j.v>LIVE.v){
+        const typing=document.activeElement
+          &&/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
+        if(!typing)applyRemote(j);       // don't yank the plan out from under an edit
+      }
+    }catch(e){}
+    renderLive();
+  },4000);
+}
+function livePush(){
+  if(!LIVE.id||LIVE.busy)return;
+  clearTimeout(LIVE.pushT);
+  LIVE.pushT=setTimeout(async()=>{
+    const now=JSON.stringify(ST);
+    if(now===LIVE.last)return;
+    LIVE.v++;LIVE.by=liveName();LIVE.last=now;
+    try{await fetch(LIVE_API+'/'+LIVE.id,{method:'PUT',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(liveEnvelope())});}
+    catch(e){}
+    renderLive();
+  },1200);
+}
+function liveLeave(){
+  clearInterval(LIVE.timer);LIVE.id=null;
+  history.replaceState(null,'',location.pathname);renderLive();
+}
+function renderLive(){
+  const el=document.getElementById('liveChip');if(!el)return;
+  el.innerHTML=LIVE.id
+    ?`<span style="color:var(--win)">●</span> LIVE · …${LIVE.id.slice(-6)}${LIVE.by?' · by '+LIVE.by:''}
+      <button class="x" id="liveCopy" title="copy the live link">⧉</button>
+      <button class="x" id="liveOff" title="leave the live room (the room keeps existing)">✕</button>`
+    :`<button id="liveGo" title="create a shared live room — everyone with the link sees and edits this plan. State is stored on jsonblob.com, a public JSON store: unguessable link, no password.">Go Live</button>`;
+  const g=document.getElementById('liveGo');if(g)g.onclick=liveStart;
+  const c=document.getElementById('liveCopy');if(c)c.onclick=async()=>{
+    const err=document.getElementById('err');
+    try{await navigator.clipboard.writeText(location.href);
+      err.innerHTML='<span class="ok">Live link copied.</span>';}
+    catch(e){showLink(err,'Copy the live link:');}};
+  const o=document.getElementById('liveOff');if(o)o.onclick=liveLeave;
+}
+
 /* boot */
 poolRates();   // warm the sample once (~1s)
 if(!ST.days.length){ST.days.push(newDay());ST.active=0;}
 render();
+renderLive();
+(function(){const m=location.hash.match(/room=([A-Za-z0-9\-]+)/);if(m)liveJoin(m[1]);})();
 </script>
 </body>
 </html>
