@@ -477,7 +477,7 @@ function simDay(day,H,runs){
   const slots=Math.max(1,ST.slots||3);
   const ids=(day.decks||[]).map(String);
   const K=ids.length||day.deckCount||3;
-  H=H||K;runs=runs||300;
+  H=H||Math.max(K,day.matches||0);runs=runs||300;   // matches beyond the fitted decks run on day-average rates
   const key=JSON.stringify([ms.map(m=>m.type+':'+m.target),ids,K,H,runs,slots,SUIT_MODEL]);
   if(SIMCACHE.has(key))return SIMCACHE.get(key);
   const R=poolRates();
@@ -525,7 +525,7 @@ function simDay(day,H,runs){
   }
   const half=Math.floor(runs/2);
   const out={K,H,slots,runs,
-    pDone:ms.map((_,j)=>doneCnt[j][Math.min(K,H)-1]/runs),
+    pDone:ms.map((_,j)=>doneCnt[j][H-1]/runs),
     doneByMatch:doneCnt.map(a=>a.map(v=>v/runs)),
     avgProg:progSum.map(a=>a.map(v=>v/runs)),
     allByMatch:allCnt.map(v=>v/runs),
@@ -540,7 +540,7 @@ function dayStats(day){
   if(!ms.length)return {per:[],all:1,tokExp:0,tokMax:0,sim:null};
   const sim=simDay(day);
   const per=ms.map((m,j)=>({m,j,p:sim.pDone[j],med:sim.medDone[j]}));
-  return {per,sim,all:sim.allByMatch[Math.min(sim.K,sim.H)-1],
+  return {per,sim,all:sim.allByMatch[sim.H-1],
     tokExp:per.reduce((a,x)=>a+x.m.tokens*x.p,0),
     tokMax:per.reduce((a,x)=>a+x.m.tokens,0)};
 }
@@ -582,7 +582,11 @@ function deckPlanHTML(day){                // deck list, played in order, with s
   const sim=simDay(day);                   // probabilities (300-run MC)
   const tl=timelineForDay(day,'per');      // the TYPICAL path: when each mission actually enters
   const slots=sim.slots;
-  const rows=ids.map((id,k)=>{
+  const M=sim.H;                           // matches played (≥ fitted decks)
+  const rows=Array.from({length:M},(_,k)=>{
+    const id=k<ids.length?ids[k]:`<span class="dim">any deck (pool)</span>`;
+    const typTok=ms.reduce((a,m,j)=>a+(tl.ms[j].done!=null&&tl.ms[j].done<=k+1?m.tokens:0),0);
+    const expTok=ms.reduce((a,m,j)=>a+m.tokens*sim.doneByMatch[j][k],0);
     const cells=ms.map((m,j)=>{
       const sv=tl.ms[j].serve,dn=tl.ms[j].done;
       const p=sim.doneByMatch[j][k];
@@ -595,10 +599,13 @@ function deckPlanHTML(day){                // deck list, played in order, with s
       return `<td title="typical path after deck ${k+1}: ${prog.toFixed(2)} of ${m.target}${doneHere?` — done in deck ${Math.ceil(dn)}`:''} · entered deck ${Math.floor(sv)+1} · P(done by now) ${ptx(p)}">
         <div class="mb ${doneHere?'g':p>=0.7?'g':p>=0.35?'m':'r'}"><i style="width:${w}%"></i><b>${doneHere?'✓ d'+Math.ceil(dn):prog.toFixed(1)+' / '+m.target}</b></div></td>`;});
     return `<tr><td class="dim">${k+1}</td><td>${id}</td>${cells}
+      <td title="tokens on the typical path: ${typTok} · expected over ${sim.runs} runs: ${expTok.toFixed(1)}"
+        style="font-family:var(--mono)"><b style="color:var(--gold)">${typTok}</b><span class="dim"> ~${expTok.toFixed(0)}</span></td>
       <td><span class="pb ${pcls(sim.allByMatch[k])}">${ptx(sim.allByMatch[k])}</span></td></tr>`;}).join('');
   return `<div class="plan"><div class="cap">Deck plan · typical path — ${slots} visible slots · queued missions start counting only when they enter · Day done = probability from ${sim.runs}-run sim</div>
     <table><thead><tr><th>#</th><th>Deck</th>
     ${ms.map((m,j)=>`<th>${j<slots?'':'⏳ '}${M29[MI[m.type]][1]} ×${m.target}</th>`).join('')}
+    <th title="tokens collected so far — typical path, then the sim expectation">Tokens</th>
     <th title="chance every mission is complete by the end of this deck">Day done</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
@@ -657,6 +664,7 @@ function render(){
       <div class="dhead">
         <span class="dtag">DAY ${di+1}</span>
         <span class="lbl" title="the day is designed to be completed within this many decks">finish in</span><input type="number" min="1" max="10" value="${day.deckCount||3}" data-dc="${di}"><span class="lbl">decks</span>
+        <span class="lbl" title="how many matches the player actually plays this day — matches beyond the fitted decks run on this day's average deck">matches</span><input type="number" min="1" max="30" value="${day.matches||day.deckCount||3}" data-mc="${di}">
         <span class="lbl">all missions</span><span class="pb ${pcls(s.all)}">${ptx(s.all)}</span>
         ${(day.decks||[]).length&&day.fitSig!==daySig(day)
           ?`<button class="pb pr" style="border:none;cursor:pointer" data-refit="${di}"
@@ -716,9 +724,9 @@ function renderCurves(){
   const day=ST.days[ST.active];
   const el=document.getElementById('curves');
   if(!day||!(day.missions||[]).length){el.innerHTML='<div class="dim" style="font-size:12px">select a day with missions</div>';return;}
-  const K=day.deckCount||3;
+  const K=Math.max((day.decks||[]).length||day.deckCount||3,day.matches||0);
   const COLS=['#C9A55C','#5BB98A','#7FB3D5','#C77B1D','#B08BC9'];
-  const N=12,w=640,h=210,pl=42,pr=10,pt=10,pb=24;
+  const N=Math.max(12,K),w=640,h=210,pl=42,pr=10,pt=10,pb=24;
   const X=n=>pl+((n-1)/(N-1))*(w-pl-pr);
   const Y=p=>pt+(1-p)*(h-pt-pb);
   const sim=simDay(day,N);                 // slot-aware: P(done by match n) incl. queue wait
@@ -873,6 +881,7 @@ document.getElementById('days').addEventListener('change',e=>{
   if(d.t!=null){const[i,j]=d.t.split(':').map(Number);ST.days[i].missions[j].target=Math.max(1,+t.value||1);}
   else if(d.k!=null){const[i,j]=d.k.split(':').map(Number);ST.days[i].missions[j].tokens=Math.max(1,+t.value||1);}
   else if(d.dc!=null){ST.days[+d.dc].deckCount=Math.max(1,+t.value||1);}
+  else if(d.mc!=null){ST.days[+d.mc].matches=Math.max(1,+t.value||1);}
   else return;
   render();});
 document.getElementById('chestAdd').onclick=()=>{
@@ -901,11 +910,17 @@ let SCHED_MODE='personal';
 // completes; each mission's clock runs only while visible. Time unit = matches.
 function timelineForDay(day,mode,mpd){
   const R=poolRates();
-  const K=mode==='cal'?mpd:((day.decks||[]).length||day.deckCount||3);
+  const K=mode==='cal'?mpd
+    :Math.max((day.decks||[]).length||day.deckCount||3,day.matches||0);
+  const dayAvg={};
   const rateAt=(mi,m)=>{
     if(mode==='cal')return R[mi];
     const id=(day.decks||[])[m],d=id&&BYID.get(String(id));
-    return d?deckRates(d,30)[mi]:R[mi];
+    if(d)return deckRates(d,30)[mi];
+    const ds=(day.decks||[]).map(x=>BYID.get(String(x))).filter(Boolean);
+    if(!ds.length)return R[mi];
+    if(dayAvg[mi]==null)dayAvg[mi]=ds.reduce((a,dd)=>a+deckRates(dd,30)[mi],0)/ds.length;
+    return dayAvg[mi];          // matches past the fitted decks: this day's average deck
   };
   const ms=(day.missions||[]).map((m,idx)=>({idx,type:m.type,target:m.target,
     tokens:m.tokens,progress:0,serve:null,done:null}));
@@ -945,7 +960,8 @@ function ganttSVG(tl,day,mode){
   // deck boundaries + labels
   for(let m=0;m<tl.K;m++){
     g+=`<line x1="${X(m)}" x2="${X(m)}" y1="${pt-6}" y2="${h-20}" stroke="#22302B"/>`;
-    const lbl=mode==='cal'?('m'+(m+1)):('…'+String((day.decks||[])[m]||'?').slice(-4));
+    const lbl=mode==='cal'?('m'+(m+1))
+      :((day.decks||[])[m]?'…'+String(day.decks[m]).slice(-4):'pool');
     g+=`<text x="${(X(m)+X(m+1))/2}" y="${pt-9}" text-anchor="middle" font-size="9" fill="#8B9A93" font-family="IBM Plex Mono">${lbl}</text>`;
   }
   g+=`<line x1="${X(tl.K)}" x2="${X(tl.K)}" y1="${pt-6}" y2="${h-20}" stroke="#2E4038"/>`;
