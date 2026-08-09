@@ -108,6 +108,7 @@
     border:1px solid var(--line);border-radius:4px;overflow:hidden}
   .mb i{position:absolute;top:0;bottom:0;left:0;opacity:.85}
   .mb.g i{background:var(--win)}.mb.m i{background:var(--gold)}.mb.r i{background:var(--lose);opacity:.55}
+  .mb.gd i{background:#1E5C40}
   .mb b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     font-size:9.5px;font-weight:700;color:var(--text);text-shadow:0 1px 2px rgba(0,0,0,.55)}
 
@@ -213,6 +214,10 @@
     <div>
       <div class="cap" style="margin-bottom:6px">Between chests — matches per milestone</div>
       <div id="effChests"></div>
+    </div>
+    <div>
+      <div class="cap" style="margin-bottom:6px">Matches vs missions completed — one line per day</div>
+      <div id="effDone"></div>
     </div>
   </div>
 </div>
@@ -916,8 +921,8 @@ function deckPlanHTML(day,di){             // deck list, played in order, with s
       const prog=Math.min(tl.snaps[k][j],m.target);
       const doneHere=dn!=null&&dn<=k+1;
       const w=Math.min(100,100*prog/m.target);
-      const dueTxt=m.due?(doneHere?(Math.ceil(dn)>m.due?` · MISSED due d${m.due}`:` · due d${m.due} ✓`):` · due d${m.due}`):'';
-      const cls=doneHere?(m.due&&Math.ceil(dn)>m.due?'r':'g'):p>=0.7?'g':p>=0.35?'m':'r';
+      const dueTxt=m.due?(doneHere?(Math.ceil(dn)===m.due?` · on due d${m.due} ✓`:` · done but off the due you set (d${m.due})`):` · due d${m.due}`):'';
+      const cls=doneHere?(m.due&&Math.ceil(dn)!==m.due?'gd':'g'):p>=0.7?'g':p>=0.35?'m':'r';
       return `<td title="typical path after deck ${k+1}: ${prog.toFixed(2)} of ${m.target}${doneHere?` — done in deck ${Math.ceil(dn)}`:''}${dueTxt} · entered deck ${Math.floor(sv)+1} · P(done by now) ${ptx(p)}">
         <div class="mb ${cls}"><i style="width:${w}%"></i><b>${doneHere?'✓ d'+Math.ceil(dn):prog.toFixed(1)+' / '+m.target}</b></div></td>`;});
     const open=INSP===di+':'+k;
@@ -1098,9 +1103,37 @@ function renderChests(){
 }
 function renderEffort(){
   const elD=document.getElementById('effDays'),elC=document.getElementById('effChests');
+  const elN=document.getElementById('effDone');
   if(!ST.days.length){
-    elD.innerHTML=elC.innerHTML='<div class="dim" style="font-size:12px">add days first</div>';return;}
+    elD.innerHTML=elC.innerHTML=elN.innerHTML='<div class="dim" style="font-size:12px">add days first</div>';return;}
   const stats=ST.days.map(d=>dayStats(d));
+  { // matches vs expected missions completed — one line per day
+    const COLS=['#C9A55C','#5BB98A','#7FB3D5','#C77B1D','#B08BC9'];
+    const series=ST.days.map((d,i)=>{
+      const s=stats[i];if(!s.sim)return null;
+      return {name:'d'+(i+1)+' ('+s.per.length+' missions)',color:COLS[i%COLS.length],
+        pts:Array.from({length:s.sim.H},(_,k)=>
+          s.per.reduce((a,_,j)=>a+s.sim.doneByMatch[j][k],0))};
+    }).filter(Boolean);
+    if(!series.length)elN.innerHTML='<div class="dim" style="font-size:12px">add missions first</div>';
+    else{
+      const maxX=Math.max(...series.map(s=>s.pts.length),1);
+      const maxY=Math.max(...ST.days.map(d=>(d.missions||[]).length),1);
+      const w=460,h=190,pl=30,pr=10,pt=12,pb=24;
+      const X=n=>pl+((n-1)/Math.max(1,maxX-1))*(w-pl-pr);
+      const Y=v=>pt+(1-v/maxY)*(h-pt-pb);
+      let g='';
+      for(let v=0;v<=maxY;v++)g+=`<line x1="${pl}" x2="${w-pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="#22302B"/>
+        <text x="${pl-6}" y="${Y(v)+3}" text-anchor="end" font-size="9" fill="#8B9A93" font-family="IBM Plex Mono">${v}</text>`;
+      for(let n=1;n<=maxX;n++)g+=`<text x="${X(n)}" y="${h-8}" text-anchor="middle" font-size="9" fill="#8B9A93" font-family="IBM Plex Mono">${n}</text>`;
+      g+=series.map(s=>`<path d="${s.pts.map((v,i)=>(i?'L':'M')+X(i+1).toFixed(1)+' '+Y(v).toFixed(1)).join(' ')}"
+        fill="none" stroke="${s.color}" stroke-width="2"/>
+        <circle cx="${X(s.pts.length)}" cy="${Y(s.pts[s.pts.length-1])}" r="3" fill="${s.color}"/>`).join('');
+      elN.innerHTML=`<svg viewBox="0 0 ${w} ${h}" style="max-width:${w}px">${g}</svg>
+        <div class="legend">${series.map(s=>`<span><i style="background:${s.color}"></i>${s.name}</span>`).join('')}
+        <span style="margin-left:auto">y = expected missions done · x = matches</span></div>`;
+    }
+  }
   { // per day: allotted matches (frame) vs typical matches to finish all missions (gold), expected missions done on top
     const data=ST.days.map((d,i)=>{
       const s=stats[i];
