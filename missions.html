@@ -579,19 +579,24 @@ function deckPlanHTML(day){                // deck list, played in order, with s
   if(!ids.length)return `<div class="decks">no decks yet — set "finish in" and press Fit decks</div>`;
   const ms=day.missions||[];
   if(!ms.length)return `<div class="decks">decks: ${ids.join(' · ')}</div>`;
-  const sim=simDay(day);
+  const sim=simDay(day);                   // probabilities (300-run MC)
+  const tl=timelineForDay(day,'per');      // the TYPICAL path: when each mission actually enters
   const slots=sim.slots;
   const rows=ids.map((id,k)=>{
     const cells=ms.map((m,j)=>{
-      const avg=sim.avgProg[j][k],p=sim.doneByMatch[j][k];
-      const w=Math.min(100,100*avg/m.target);
-      const queued=j>=slots&&avg<0.05&&p<0.02;
-      return `<td title="after deck ${k+1}: avg progress ${avg.toFixed(2)} of ${m.target} · P(done) ${ptx(p)}${j>=slots?' · queued — counts only after it enters a slot':''}">${
-        queued?'<span class="dim" style="font-size:10px">in queue</span>'
-        :`<div class="mb ${p>=0.7?'g':p>=0.35?'m':'r'}"><i style="width:${w}%"></i><b>${avg.toFixed(1)} / ${m.target}</b></div>`}</td>`;});
+      const sv=tl.ms[j].serve,dn=tl.ms[j].done;
+      const p=sim.doneByMatch[j][k];
+      if(sv==null||sv>=k+1)                // hasn't entered a slot yet on the typical path
+        return `<td title="waiting in the queue — progress starts only when a mission above completes${sv!=null?` (typically enters in deck ${Math.floor(sv)+1})`:' (typically never enters within this day)'}">
+          <span class="dim" style="font-size:10px">in queue${sv!=null?` · d${Math.floor(sv)+1}`:''}</span></td>`;
+      const prog=Math.min(tl.snaps[k][j],m.target);
+      const doneHere=dn!=null&&dn<=k+1;
+      const w=Math.min(100,100*prog/m.target);
+      return `<td title="typical path after deck ${k+1}: ${prog.toFixed(2)} of ${m.target}${doneHere?` — done in deck ${Math.ceil(dn)}`:''} · entered deck ${Math.floor(sv)+1} · P(done by now) ${ptx(p)}">
+        <div class="mb ${doneHere?'g':p>=0.7?'g':p>=0.35?'m':'r'}"><i style="width:${w}%"></i><b>${doneHere?'✓ d'+Math.ceil(dn):prog.toFixed(1)+' / '+m.target}</b></div></td>`;});
     return `<tr><td class="dim">${k+1}</td><td>${id}</td>${cells}
       <td><span class="pb ${pcls(sim.allByMatch[k])}">${ptx(sim.allByMatch[k])}</span></td></tr>`;}).join('');
-  return `<div class="plan"><div class="cap">Deck plan · cumulative progress — ${slots} visible slots, queued missions count only once served</div>
+  return `<div class="plan"><div class="cap">Deck plan · typical path — ${slots} visible slots · queued missions start counting only when they enter · Day done = probability from ${sim.runs}-run sim</div>
     <table><thead><tr><th>#</th><th>Deck</th>
     ${ms.map((m,j)=>`<th>${j<slots?'':'⏳ '}${M29[MI[m.type]][1]} ×${m.target}</th>`).join('')}
     <th title="chance every mission is complete by the end of this deck">Day done</th></tr></thead>
@@ -908,24 +913,29 @@ function timelineForDay(day,mode,mpd){
   const serveNext=t=>{while(vis.length<Math.max(1,ST.slots||3)&&queue.length){
     const i=queue.shift();ms[i].serve=t;vis.push(i);}};
   let t=0;serveNext(0);
-  let guard=0;
-  while(t<K&&vis.length&&guard++<500){
-    const m=Math.floor(t),boundary=Math.min(m+1,K);
-    let best=null,bestT=Infinity;
-    for(const i of vis){
-      const r=rateAt(MI[ms[i].type],m);
-      if(r<=1e-9)continue;
-      const tc=t+(ms[i].target-ms[i].progress)/r;
-      if(tc<bestT){bestT=tc;best=i;}
+  const snaps=[];                          // progress per mission at the end of each match
+  for(let m=0;m<K;m++){
+    let guard=0;
+    while(t<m+1&&vis.length&&guard++<100){
+      let best=null,bestT=Infinity;
+      for(const i of vis){
+        const r=rateAt(MI[ms[i].type],m);
+        if(r<=1e-9)continue;
+        const tc=t+(ms[i].target-ms[i].progress)/r;
+        if(tc<bestT){bestT=tc;best=i;}
+      }
+      if(best==null||bestT>m+1){
+        for(const i of vis)ms[i].progress+=rateAt(MI[ms[i].type],m)*(m+1-t);
+        t=m+1;break;
+      }
+      for(const i of vis)ms[i].progress+=rateAt(MI[ms[i].type],m)*(bestT-t);
+      t=bestT;ms[best].done=t;ms[best].progress=ms[best].target;
+      vis.splice(vis.indexOf(best),1);serveNext(t);
     }
-    if(best==null||bestT>boundary){
-      for(const i of vis)ms[i].progress+=rateAt(MI[ms[i].type],m)*(boundary-t);
-      t=boundary;continue;
-    }
-    for(const i of vis)ms[i].progress+=rateAt(MI[ms[i].type],m)*(bestT-t);
-    t=bestT;ms[best].done=t;vis.splice(vis.indexOf(best),1);serveNext(t);
+    t=Math.max(t,m+1);
+    snaps.push(ms.map(x=>x.progress));
   }
-  return {K,ms};
+  return {K,ms,snaps};
 }
 function ganttSVG(tl,day,mode){
   const COLS=['#C9A55C','#5BB98A','#7FB3D5','#C77B1D','#B08BC9'];
