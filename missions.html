@@ -633,7 +633,18 @@ function fitDay(day,usedElsewhere){
   const ms=day.missions||[];if(!ms.length)return;
   const K=day.deckCount||+document.getElementById('decksPerDay').value||3;
   const slots=Math.max(1,ST.slots||3);
-  const pool=fitCandidates(day);
+  let pool=fitCandidates(day);
+  // fun range: hard filter when it leaves enough candidates, otherwise a soft
+  // penalty so the fit degrades gracefully instead of failing
+  const lo=day.funMin??null,hi=day.funMax??null;
+  let funPenalty=null;
+  if(lo!=null||hi!=null){
+    const fdist=d=>{const s=funScore(deckKPIs(d,30));
+      return Math.max(lo!=null?lo-s:0,hi!=null?s-(hi):0,0);};
+    const inR=pool.filter(d=>fdist(d)===0);
+    if(inR.length>=K)pool=inR;
+    else funPenalty=fdist;
+  }
   const used=usedElsewhere||new Set(ST.days.filter(d=>d!==day)
     .flatMap(d=>d.decks||[]).map(String));
   const R=poolRates();
@@ -649,7 +660,7 @@ function fitDay(day,usedElsewhere){
       const id=String(d.deck_id);
       if(used.has(id)||chosen.includes(id))continue;
       const r=deckRates(d,30);
-      let s=0;
+      let s=funPenalty?-0.15*funPenalty(d):0;
       for(const j of vis){
         const m=ms[j],T=m.target;
         const proj=cum[j]+r[MI[m.type]];
@@ -684,7 +695,8 @@ function fitDay(day,usedElsewhere){
   day.fitSig=daySig(day);          // remember what the decks were fitted FOR
 }
 const daySig=day=>(day.missions||[]).map(m=>m.type+':'+m.target+':'+(m.due||0)).join('|')
-  +'#'+(day.deckCount||3)+'@'+SUIT_MODEL+'&'+(ST.slots||3); // order-sensitive: the queue order now shapes the fit
+  +'#'+(day.deckCount||3)+'@'+SUIT_MODEL+'&'+(ST.slots||3)
+  +'£'+(day.funMin??'')+'-'+(day.funMax??''); // order-sensitive: queue order + fun range shape the fit
 
 /* ═══════════════ render ═══════════════ */
 const pcls=p=>p>=0.7?'pg':p>=0.35?'pm':'pr';
@@ -826,6 +838,8 @@ function render(){
         <span class="dtag">DAY ${di+1}</span>
         <span class="lbl" title="the day is designed to be completed within this many decks">finish in</span><input type="number" min="1" max="40" value="${day.deckCount||3}" data-dc="${di}"><span class="lbl">decks</span>
         <span class="lbl" title="how many matches the player actually plays this day — matches beyond the fitted decks run on this day's average deck">matches</span><input type="number" min="1" max="60" value="${day.matches||day.deckCount||3}" data-mc="${di}">
+        <span class="lbl" title="fit only decks whose fun score (0-100) falls in this range — blank = any. If too few decks qualify, the nearest ones are used">fun</span><input type="number" min="0" max="100" value="${day.funMin??''}" placeholder="min" data-fmin="${di}" style="width:48px">
+        <span class="lbl" style="margin:0 -4px">–</span><input type="number" min="0" max="100" value="${day.funMax??''}" placeholder="max" data-fmax="${di}" style="width:48px">
         <span class="lbl">all missions</span><span class="pb ${pcls(s.all)}">${ptx(s.all)}</span>
         ${(day.decks||[]).length&&day.fitSig!==daySig(day)
           ?`<button class="pb pr" style="border:none;cursor:pointer" data-refit="${di}"
@@ -1156,6 +1170,10 @@ document.getElementById('days').addEventListener('change',e=>{
   else if(d.k!=null){const[i,j]=d.k.split(':').map(Number);ST.days[i].missions[j].tokens=Math.max(1,+t.value||1);}
   else if(d.dc!=null){ST.days[+d.dc].deckCount=Math.max(1,+t.value||1);}
   else if(d.mc!=null){ST.days[+d.mc].matches=Math.max(1,+t.value||1);}
+  else if(d.fmin!=null){const v=t.value===''?null:Math.max(0,Math.min(100,+t.value));
+    ST.days[+d.fmin].funMin=v==null?undefined:v;}
+  else if(d.fmax!=null){const v=t.value===''?null:Math.max(0,Math.min(100,+t.value));
+    ST.days[+d.fmax].funMax=v==null?undefined:v;}
   else return;
   render();});
 document.getElementById('chestAdd').onclick=()=>{
