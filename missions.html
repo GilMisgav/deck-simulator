@@ -171,6 +171,8 @@
   <input type="number" id="decksPerDay" value="3" min="1" max="40">
   <span class="lbl" title="missions visible at once — the next queued mission enters only when one completes and starts counting from that moment">Slots</span>
   <input type="number" id="slotsN" value="3" min="1" max="5">
+  <span class="lbl" title="real-money stake per match — converts mission bonus cash into RTP points for the RTP+B column (token $ value comes from the chest path)">Stake $</span>
+  <input type="number" id="stakeN" value="1" min="0.05" step="0.05" style="width:64px">
   <button class="primary" id="fitAll">Fit decks</button>
   <button id="exportBtn">Export bundle</button>
   <button id="shareBtn" title="Copy a link that opens this exact plan (days, targets, decks, chests)">Share link</button>
@@ -506,6 +508,12 @@ const funOf=d=>{
   return o!=null?o:funScore(deckKPIs(d,30));
 };
 const rtpColor=v=>v<=0.97?'var(--win)':v<=1.02?'var(--gold)':'var(--lose)';
+// $ value of one mission token, implied by the chest path (total cash ÷ last threshold)
+function chestTokenValue(){
+  const cs=[...(ST.chests||[])].sort((a,b)=>a.tokens-b.tokens);
+  if(!cs.length)return 0;
+  return cs.reduce((a,c)=>a+(+c.cash||0),0)/Math.max(1,cs[cs.length-1].tokens);
+}
 // pool averages from a fixed sample (for the bank display + defaults)
 const POOL_BY_MODEL={};let POOL_SAMPLE=[];
 function poolRates(){
@@ -767,7 +775,9 @@ function deckPlanHTML(day,di){             // deck list, played in order, with s
   const tl=timelineForDay(day,'per');      // the TYPICAL path: when each mission actually enters
   const slots=sim.slots;
   const M=sim.H;                           // matches played (≥ fitted decks)
-  const nCols=ms.length+6;
+  const nCols=ms.length+7;
+  const tokVal=chestTokenValue(),stake=ST.stake||1;
+  let prevExpTok=0;
   const rows=Array.from({length:M},(_,k)=>{
     const real=k<ids.length;
     const dk=real?BYID.get(ids[k]):null;
@@ -777,6 +787,8 @@ function deckPlanHTML(day,di){             // deck list, played in order, with s
     const ov=dk&&ST.funOverrides&&ST.funOverrides[ids[k]]!=null;
     const typTok=ms.reduce((a,m,j)=>a+(tl.ms[j].done!=null&&tl.ms[j].done<=k+1?m.tokens:0),0);
     const expTok=ms.reduce((a,m,j)=>a+m.tokens*sim.doneByMatch[j][k],0);
+    const margTok=expTok-prevExpTok;prevExpTok=expTok;
+    const rtpB=kp?kp.rtp+margTok*tokVal/stake:null;
     const cells=ms.map((m,j)=>{
       const sv=tl.ms[j].serve,dn=tl.ms[j].done;
       const p=sim.doneByMatch[j][k];
@@ -795,6 +807,7 @@ function deckPlanHTML(day,di){             // deck list, played in order, with s
       <td class="dim">${k+1}</td><td>${id}</td>
       <td${ov?' title="manual fun override — open the inspector to change or clear it"':''}>${fun==null?'<span class="dim">—</span>':`<span class="pb ${fun>=70?'pg':fun>=45?'pm':'pr'}">${fun}${ov?'*':''}</span>`}</td>
       <td>${kp?`<b style="font-family:var(--mono);color:${rtpColor(kp.rtp)}" title="return to player on this deck: money returned ÷ money wagered (flat-100 reasonable play, natural ±flat included)">${kp.rtp.toFixed(2)}</b>`:'<span class="dim">—</span>'}</td>
+      <td>${rtpB!=null?`<b style="font-family:var(--mono);color:${rtpColor(rtpB)}" title="effective RTP incl. mission bonuses: game ${kp.rtp.toFixed(2)} + ${margTok.toFixed(1)} expected tokens on this deck × $${tokVal.toFixed(3)}/token ÷ $${stake} stake${tokVal>0?'':' — add chests to give tokens a $ value'}">${rtpB.toFixed(2)}</b>`:'<span class="dim">—</span>'}</td>
       ${cells}
       <td title="tokens collected on the typical path · sim expectation: ~${expTok.toFixed(1)}"
         style="font-family:var(--mono)"><b style="color:var(--gold)">${typTok}</b></td>
@@ -804,6 +817,7 @@ function deckPlanHTML(day,di){             // deck list, played in order, with s
     <table><thead><tr><th>#</th><th>Deck</th>
     <th title="fun score 0-100: near-even win feel + surprise events + agency · * = manual override">Fun</th>
     <th title="return to player: money returned ÷ money wagered on this deck">RTP</th>
+    <th title="effective RTP after mission bonuses — game RTP + expected tokens earned on this deck × chest $/token ÷ stake $ (set stake in the top bar)">RTP+B</th>
     ${ms.map((m,j)=>`<th>${j<slots?'':'⏳ '}${M29[MI[m.type]][1]} ×${m.target}${m.due?` <span style="color:var(--gold)">→d${m.due}</span>`:''}</th>`).join('')}
     <th title="tokens collected so far on the typical path (hover for the sim expectation)">Tokens</th>
     <th title="chance every mission is complete by the end of this deck">Day done</th></tr></thead>
@@ -882,8 +896,10 @@ function render(){
         ${(()=>{const rs=(day.decks||[]).map(x=>BYID.get(String(x))).filter(Boolean).map(x=>deckKPIs(x,30).rtp);
           if(!rs.length)return '';
           const avg=rs.reduce((a,b)=>a+b,0)/rs.length;
+          const avgB=avg+s.tokExp*chestTokenValue()/((day.deckCount||3)*(ST.stake||1));
           return `<span class="lbl">rtp</span><b style="font-family:var(--mono);font-size:12px;color:${rtpColor(avg)}"
-            title="average return to player across the fitted decks — money returned ÷ money wagered">${avg.toFixed(2)}</b>`;})()}
+            title="average return to player across the fitted decks — money returned ÷ money wagered">${avg.toFixed(2)}</b>
+          <span class="lbl" style="margin-left:2px" title="effective RTP after mission bonuses — game RTP + expected day tokens × chest $/token ÷ (decks × stake $)">+b</span><b style="font-family:var(--mono);font-size:12px;color:${rtpColor(avgB)}">${avgB.toFixed(2)}</b>`;})()}
         <span style="margin-left:auto;display:flex;gap:6px">
           <button data-fit="${di}">Fit decks</button>
           <button data-play="${di}" title="open this day's decks as a Deck Room journey">Play ↗</button>
@@ -1138,6 +1154,9 @@ function newDay(){return {missions:[],deckCount:+document.getElementById('decksP
 const slotsEl=document.getElementById('slotsN');
 slotsEl.value=ST.slots||3;
 slotsEl.onchange=()=>{ST.slots=Math.max(1,Math.min(5,+slotsEl.value||3));slotsEl.value=ST.slots;render();};
+const stakeEl=document.getElementById('stakeN');
+stakeEl.value=ST.stake||1;
+stakeEl.onchange=()=>{ST.stake=Math.max(0.05,+stakeEl.value||1);stakeEl.value=ST.stake;render();};
 document.getElementById('addDay').onclick=()=>{ST.days.push(newDay());ST.active=ST.days.length-1;render();};
 document.getElementById('addDay3').onclick=()=>{for(let i=0;i<3;i++)ST.days.push(newDay());
   ST.active=ST.days.length-1;render();};
