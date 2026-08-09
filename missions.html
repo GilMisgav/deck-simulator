@@ -148,6 +148,9 @@
   <button id="exportBtn">Export bundle</button>
   <button id="shareBtn" title="Copy a link that opens this exact plan (days, targets, decks, chests)">Share link</button>
   <button id="clearAll">Clear</button>
+  <span class="lbl" style="margin-left:14px">Suits</span>
+  <button id="suitClient" title="How the SHIPPED client paints suits: position % 4 (Card.swift parseServerDeck). Cards dealt together never share a suit — 6 bank types are impossible. Use this for real bundles.">Client (shipped)</button>
+  <button id="suitRandom" title="Real-cards assumption: random suit arrangement per run. Use only if the client's suit painting changes.">Random</button>
 </div>
 <div class="err" id="err"></div>
 
@@ -193,7 +196,7 @@
 <footer>
   MISSION STUDIO · 29-type bank per Side Bets–Missions PRD (type strings enforced by validate_bundle.py) ·
   rates = weighted mean over seeded “reasonable player” runs (basic strategy + human deviations: 16v10 stands, skipped doubles/splits) ·
-  suits: deck data is rank-only, so each run draws a random suit arrangement — suit-mission rates are expectations over arrangements ·
+  suits: default = the shipped client's painting (position % 4, Card.swift) under which 6 bank types are impossible; Random mode = expectation over real-card arrangements ·
   export = personal scripted bundle with content-addressed UIDs (bnd/cfg/chn.sha1/msn/tier)
 </footer>
 </div>
@@ -315,9 +318,21 @@ function playMatch(seq,decide){
   }
   return log;
 }
-// suits: rank-only data → per run each rank's four copies get shuffled suits.
+// suits: the server deck is rank-only. Two models:
+//   client — how the SHIPPED client paints suits: suits[position % 4]
+//            (Card.swift parseServerDeck). Cards dealt together never share
+//            a suit → 6 bank types are impossible. This is the default.
+//   random — real-cards assumption: each rank's four copies get shuffled
+//            suits per run (expectation over arrangements).
+let SUIT_MODEL=(()=>{try{return localStorage.getItem('studio_suits')||'client';}
+  catch(e){return 'client';}})();
 function suitMap(seq,rng){
-  const by={},S=new Array(seq.length);
+  const S=new Array(seq.length);
+  if(SUIT_MODEL==='client'){
+    for(let i=0;i<seq.length;i++)S[i]=i%4;   // hearts,diamonds,clubs,spades cycle
+    return S;
+  }
+  const by={};
   seq.forEach((c,i)=>{(by[c]=by[c]||[]).push(i);});
   for(const r in by){
     const s=[0,1,2,3];
@@ -326,6 +341,7 @@ function suitMap(seq,rng){
   }
   return S;
 }
+// client suit order is [hearts,diamonds,clubs,spades] → 0,1 red · 2,3 black
 const COLOR=s=>s>>1;
 
 /* ═══════════════ the 29-mission bank ═══════════════ */
@@ -378,7 +394,7 @@ const MI=Object.fromEntries(M29.map((m,i)=>[m[0],i]));
 const RCACHE=new Map();
 function deckRates(deck,runs){
   runs=runs||30;
-  const key=deck.deck_id+'|'+runs;
+  const key=deck.deck_id+'|'+runs+'|'+SUIT_MODEL;
   if(RCACHE.has(key))return RCACHE.get(key);
   const seq=deck.cards.split('');
   const bid=BigInt(deck.deck_id);
@@ -399,15 +415,15 @@ function deckRates(deck,runs){
   return out;
 }
 // pool averages from a fixed sample (for the bank display + defaults)
-let POOL_RATES=null,POOL_SAMPLE=[];
+const POOL_BY_MODEL={};let POOL_SAMPLE=[];
 function poolRates(){
-  if(POOL_RATES)return POOL_RATES;
+  if(POOL_BY_MODEL[SUIT_MODEL])return POOL_BY_MODEL[SUIT_MODEL];
   const n=Math.min(120,DECKS.length);
   POOL_SAMPLE=Array.from({length:n},(_,i)=>DECKS[Math.floor(i*DECKS.length/n)]);
   const acc=new Array(29).fill(0);
   for(const d of POOL_SAMPLE)deckRates(d,20).forEach((v,i)=>acc[i]+=v);
-  POOL_RATES=acc.map(v=>v/n);
-  return POOL_RATES;
+  POOL_BY_MODEL[SUIT_MODEL]=acc.map(v=>v/n);
+  return POOL_BY_MODEL[SUIT_MODEL];
 }
 function poisAtLeast(lam,T){
   if(T<=0)return 1;if(lam<=0)return 0;
@@ -468,7 +484,7 @@ function fitDay(day,usedElsewhere){
   day.fitSig=daySig(day);          // remember what the decks were fitted FOR
 }
 const daySig=day=>(day.missions||[]).map(m=>m.type+':'+m.target).join('|')
-  +'#'+(day.deckCount||3);
+  +'#'+(day.deckCount||3)+'@'+SUIT_MODEL;
 
 /* ═══════════════ render ═══════════════ */
 const pcls=p=>p>=0.7?'pg':p>=0.35?'pm':'pr';
@@ -488,11 +504,15 @@ function render(){
     M29.map((m,i)=>({m,i})).filter(x=>x.m[2]===cat).map(({m,i})=>{
       const used=act?(act.missions||[]).filter(x=>x.type===m[0]).length:0;
       const med=medMatches(R[i],1);
-      return `<div class="mcard" data-add="${m[0]}" title="${m[0]} — click to add to Day ${ST.active+1}">
-        ${used?`<span class="used">✓</span>`:''}
+      const dead=R[i]<=0;
+      return `<div class="mcard" data-add="${m[0]}" style="${dead?'opacity:.45':''}"
+        title="${m[0]}${dead?' — IMPOSSIBLE in the shipped client: suits are painted by deck position, so cards dealt together never share a suit':' — click to add to Day '+(ST.active+1)}">
+        ${dead?`<span class="used" style="background:var(--lose);color:#fff">impossible</span>`
+          :used?`<span class="used">✓</span>`:''}
         <div class="nm">${m[1]}</div>
-        <div class="st"><b>${R[i]>=0.01?R[i].toFixed(2):R[i].toFixed(3)}</b>/match ·
-          1× ≈ <b>${med==null?'∞':med}</b> match${med===1?'':'es'}</div>
+        <div class="st">${dead?'<b style="color:var(--lose)">0</b>/match in shipped client'
+          :`<b>${R[i]>=0.01?R[i].toFixed(2):R[i].toFixed(3)}</b>/match ·
+          1× ≈ <b>${med==null?'∞':med}</b> match${med===1?'':'es'}`}</div>
       </div>`;}).join('')+'</div>').join('');
   // days
   document.getElementById('days').innerHTML=ST.days.map((day,di)=>{
@@ -696,6 +716,7 @@ document.getElementById('bank').addEventListener('click',e=>{
   if((day.missions||[]).length>=5){err.textContent='A day holds at most 5 missions (dailyCap).';return;}
   if(day.missions.some(m=>m.type===c.dataset.add)){err.textContent='That mission is already in this day (no duplicate types per chain).';return;}
   const rate=poolRates()[MI[c.dataset.add]];
+  if(rate<=0){err.textContent='Impossible in the shipped client — suits are painted by position (Card.swift), cards dealt together never share a suit. Only useful for testing the uncompleted-and-covered path.';return;}
   day.missions.push({type:c.dataset.add,target:Math.max(1,Math.round(rate*(day.deckCount||3)*0.75)),
     tokens:tokDefault(rate)});
   render();});
@@ -901,6 +922,17 @@ document.getElementById('mCalendric').onclick=()=>{SCHED_MODE='calendric';
 document.getElementById('calMpd').addEventListener('change',renderSchedule);
 document.getElementById('calStart').addEventListener('change',renderSchedule);
 document.getElementById('exportCal').onclick=exportCalendric;
+function setSuitModel(m){
+  SUIT_MODEL=m;
+  try{localStorage.setItem('studio_suits',m);}catch(e){}
+  document.getElementById('suitClient').classList.toggle('primary',m==='client');
+  document.getElementById('suitRandom').classList.toggle('primary',m==='random');
+  render();
+  if(document.getElementById('vSched').style.display!=='none')renderSchedule();
+}
+document.getElementById('suitClient').onclick=()=>setSuitModel('client');
+document.getElementById('suitRandom').onclick=()=>setSuitModel('random');
+document.getElementById('suit'+(SUIT_MODEL==='client'?'Client':'Random')).classList.add('primary');
 (()=>{const d=new Date();d.setDate(d.getDate()+1);
   document.getElementById('calStart').value=d.toISOString().slice(0,10);})();
 
