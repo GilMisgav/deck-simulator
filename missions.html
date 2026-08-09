@@ -98,6 +98,9 @@
     font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase}
   .adddaybig:hover{border-color:var(--gold);color:var(--gold)}
   .plan{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px;overflow-x:auto}
+  .drow{cursor:pointer}
+  .drow:hover td{background:rgba(201,165,92,.05)}
+  .drow.on td{background:rgba(201,165,92,.09)}
   .plan .cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
     color:var(--muted);margin-bottom:6px}
   .plan th,.plan td{text-align:left;padding:5px 8px}
@@ -196,6 +199,20 @@
     <th>#</th><th title="anchor the chest to a point: fixed tokens, end of a day, or a global match number — day/match derive the token threshold from the expected tokens collected by that point">Unlock by</th>
     <th>Tokens</th><th>Bonus $</th><th>Unlocks (exp.)</th><th></th>
   </tr></thead><tbody></tbody></table>
+</div>
+
+<h2>Effort <small>matches demanded per day · spacing between chest milestones</small></h2>
+<div class="panel">
+  <div style="display:flex;gap:36px;flex-wrap:wrap;align-items:flex-start">
+    <div>
+      <div class="cap" style="margin-bottom:6px">Per day — matches to finish vs allotted</div>
+      <div id="effDays"></div>
+    </div>
+    <div>
+      <div class="cap" style="margin-bottom:6px">Between chests — matches per milestone</div>
+      <div id="effChests"></div>
+    </div>
+  </div>
 </div>
 
 <h2>Completion curves <small>P(mission done) vs matches played — selected day</small></h2>
@@ -439,6 +456,46 @@ function deckRates(deck,runs){
   if(RCACHE.size>3000)RCACHE.clear();
   return out;
 }
+// per-deck gameplay KPIs from the same seeded reasonable-player runs
+const KCACHE=new Map();
+function deckKPIs(deck,runs){
+  runs=runs||30;
+  const key=deck.deck_id+'|'+runs;
+  if(KCACHE.has(key))return KCACHE.get(key);
+  const seq=deck.cards.split('');
+  const bid=BigInt(deck.deck_id);
+  const base=hashSeed(Number(bid&0xffffffffn),Number(bid>>32n));
+  let rounds=0,W=0,L=0,P=0,B=0,DB=0,R21=0,SP=0,DD=0,DW=0;
+  for(let k=0;k<runs;k++){
+    const log=playMatch(seq,reasonable(mulberry32(hashSeed(0x5EED,base,k))));
+    rounds+=log.length;
+    for(const r of log){
+      if(total(r.dealer)[0]>21)DB++;
+      if(r.split)SP++;
+      for(const h of r.hands){
+        if(h.res==='WIN')W++;
+        else if(h.res==='push')P++;
+        else{L++;if(h.res==='bust')B++;}
+        if(h.acts.includes('dbl')){DD++;if(h.res==='WIN')DW++;}
+        if(h.cards.length>=3&&total(h.cards)[0]===21)R21++;
+      }
+    }
+  }
+  const hands=Math.max(1,W+L+P);
+  const out={rounds:rounds/runs,winPct:W/hands,losePct:L/hands,pushPct:P/hands,
+    bustPct:B/hands,dbustPerM:DB/runs,r21PerM:R21/runs,splitPerM:SP/runs,
+    dblPerM:DD/runs,dblWinPct:DD?DW/DD:0,ratio:L?W/L:9};
+  KCACHE.set(key,out);
+  if(KCACHE.size>3000)KCACHE.clear();
+  return out;
+}
+// fun 0-100: near-even win feel + surprise events + agency (doubles/splits)
+function funScore(k){
+  const winComp=Math.max(0,1-Math.abs(k.winPct-0.46)/0.25);
+  const eventComp=Math.min(1,(k.r21PerM+k.dbustPerM*0.6+k.splitPerM)/2.5);
+  const actionComp=Math.min(1,(k.dblPerM+k.splitPerM)/2);
+  return Math.round(100*(0.45*winComp+0.35*eventComp+0.20*actionComp));
+}
 // pool averages from a fixed sample (for the bank display + defaults)
 const POOL_BY_MODEL={};let POOL_SAMPLE=[];
 function poolRates(){
@@ -632,7 +689,41 @@ const daySig=day=>(day.missions||[]).map(m=>m.type+':'+m.target+':'+(m.due||0)).
 /* ═══════════════ render ═══════════════ */
 const pcls=p=>p>=0.7?'pg':p>=0.35?'pm':'pr';
 const ptx=p=>(100*p).toFixed(0)+'%';
-function deckPlanHTML(day){                // deck list, played in order, with slot-aware cumulative progress
+let INSP=null;                             // open deck inspector: 'di:k' or null
+function inspectorHTML(day,k,cols){        // KPI drill-down for the deck at position k
+  const id=String((day.decks||[])[k]),d=BYID.get(id);
+  if(!d)return '';
+  const kp=deckKPIs(d,30),fun=funScore(kp);
+  const R=poolRates();
+  const chip=(lbl,val,tip)=>`<div style="background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:7px 10px" title="${tip||''}">
+    <div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">${lbl}</div>
+    <div style="font-family:var(--mono);font-size:14px;font-weight:700;margin-top:2px">${val}</div></div>`;
+  const qa=(day.missions||[]).map(m=>{
+    const r=deckRates(d,30)[MI[m.type]],pool=R[MI[m.type]];
+    const rel=pool>0?r/pool:0;
+    return `<tr><td>${M29[MI[m.type]][1]}</td>
+      <td style="font-family:var(--mono)"><b style="color:${r<=0?'var(--lose)':rel>=1.3?'var(--win)':rel<0.7?'var(--lose)':'var(--text)'}">${r.toFixed(2)}</b>/match</td>
+      <td class="dim" style="font-family:var(--mono)">${pool.toFixed(2)}/match</td>
+      <td class="dim" style="font-family:var(--mono)">${pool>0?'×'+rel.toFixed(1):'—'}</td></tr>`;}).join('');
+  return `<tr class="insp"><td colspan="${cols}" style="background:var(--inset);padding:12px 14px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:stretch">
+      ${chip('Fun',`<span style="color:${fun>=70?'var(--win)':fun>=45?'var(--gold)':'var(--lose)'}">${fun}</span>`,
+        'near-even win feel (45%) + surprise events (21s, dealer busts, splits) + agency (doubles/splits)')}
+      ${chip('Win ratio',kp.ratio.toFixed(2),'player hand wins ÷ losses (busts included)')}
+      ${chip('W / P / L',`${(100*kp.winPct).toFixed(0)}·${(100*kp.pushPct).toFixed(0)}·${(100*kp.losePct).toFixed(0)}%`,'share of hands won / pushed / lost')}
+      ${chip('Rounds',kp.rounds.toFixed(1)+'/match','rounds played per match')}
+      ${chip('Reach 21',kp.r21PerM.toFixed(1)+'/m','3+ card 21s per match')}
+      ${chip('Dealer bust',kp.dbustPerM.toFixed(1)+'/m','dealer busts per match')}
+      ${chip('Splits',kp.splitPerM.toFixed(1)+'/m','splits per match')}
+      ${chip('Doubles',`${kp.dblPerM.toFixed(1)}/m · ${(100*kp.dblWinPct).toFixed(0)}%W`,'doubles per match and their win rate')}
+      <button data-play1="${id}" style="align-self:center" title="open just this deck in Deck Room">Play ↗</button>
+    </div>
+    <div class="cap" style="margin:12px 0 4px">QA per event — this deck vs pool average</div>
+    <table style="max-width:560px"><thead><tr><th>Mission</th><th>This deck</th><th>Pool</th><th>Rel.</th></tr></thead>
+    <tbody>${qa}</tbody></table>
+  </td></tr>`;
+}
+function deckPlanHTML(day,di){             // deck list, played in order, with slot-aware cumulative progress
   const ids=(day.decks||[]).map(String);
   if(!ids.length)return `<div class="decks">no decks yet — set "finish in" and press Fit decks</div>`;
   const ms=day.missions||[];
@@ -641,8 +732,11 @@ function deckPlanHTML(day){                // deck list, played in order, with s
   const tl=timelineForDay(day,'per');      // the TYPICAL path: when each mission actually enters
   const slots=sim.slots;
   const M=sim.H;                           // matches played (≥ fitted decks)
+  const nCols=ms.length+5;
   const rows=Array.from({length:M},(_,k)=>{
-    const id=k<ids.length?ids[k]:`<span class="dim">any deck (pool)</span>`;
+    const real=k<ids.length;
+    const id=real?ids[k]:`<span class="dim">any deck (pool)</span>`;
+    const fun=real&&BYID.get(ids[k])?funScore(deckKPIs(BYID.get(ids[k]),30)):null;
     const typTok=ms.reduce((a,m,j)=>a+(tl.ms[j].done!=null&&tl.ms[j].done<=k+1?m.tokens:0),0);
     const expTok=ms.reduce((a,m,j)=>a+m.tokens*sim.doneByMatch[j][k],0);
     const cells=ms.map((m,j)=>{
@@ -654,18 +748,24 @@ function deckPlanHTML(day){                // deck list, played in order, with s
       const prog=Math.min(tl.snaps[k][j],m.target);
       const doneHere=dn!=null&&dn<=k+1;
       const w=Math.min(100,100*prog/m.target);
-      const dueTxt=m.due?(doneHere?(Math.ceil(dn)>m.due?` · MISSED due d${m.due}`:Math.ceil(dn)<m.due-1?` · early (due d${m.due})`:` · on due d${m.due}`):` · due d${m.due}`):'';
-      const cls=doneHere?(m.due&&Math.ceil(dn)>m.due?'r':m.due&&Math.ceil(dn)<m.due-1?'m':'g'):p>=0.7?'g':p>=0.35?'m':'r';
+      const dueTxt=m.due?(doneHere?(Math.ceil(dn)>m.due?` · MISSED due d${m.due}`:` · due d${m.due} ✓`):` · due d${m.due}`):'';
+      const cls=doneHere?(m.due&&Math.ceil(dn)>m.due?'r':'g'):p>=0.7?'g':p>=0.35?'m':'r';
       return `<td title="typical path after deck ${k+1}: ${prog.toFixed(2)} of ${m.target}${doneHere?` — done in deck ${Math.ceil(dn)}`:''}${dueTxt} · entered deck ${Math.floor(sv)+1} · P(done by now) ${ptx(p)}">
         <div class="mb ${cls}"><i style="width:${w}%"></i><b>${doneHere?'✓ d'+Math.ceil(dn):prog.toFixed(1)+' / '+m.target}</b></div></td>`;});
-    return `<tr><td class="dim">${k+1}</td><td>${id}</td>${cells}
-      <td title="tokens on the typical path: ${typTok} · expected over ${sim.runs} runs: ${expTok.toFixed(1)}"
-        style="font-family:var(--mono)"><b style="color:var(--gold)">${typTok}</b><span class="dim"> ~${expTok.toFixed(0)}</span></td>
-      <td><span class="pb ${pcls(sim.allByMatch[k])}">${ptx(sim.allByMatch[k])}</span></td></tr>`;}).join('');
-  return `<div class="plan"><div class="cap">Deck plan · typical path — ${slots} visible slots · queued missions start counting only when they enter · Day done = probability from ${sim.runs}-run sim</div>
+    const open=INSP===di+':'+k;
+    return `<tr${real?` class="drow${open?' on':''}" data-insp="${di}:${k}" title="click for deck KPIs — fun, win ratio, events"`:''}>
+      <td class="dim">${k+1}</td><td>${id}</td>
+      <td>${fun==null?'<span class="dim">—</span>':`<span class="pb ${fun>=70?'pg':fun>=45?'pm':'pr'}">${fun}</span>`}</td>
+      ${cells}
+      <td title="tokens collected on the typical path · sim expectation: ~${expTok.toFixed(1)}"
+        style="font-family:var(--mono)"><b style="color:var(--gold)">${typTok}</b></td>
+      <td><span class="pb ${pcls(sim.allByMatch[k])}">${ptx(sim.allByMatch[k])}</span></td></tr>`
+      +(open?inspectorHTML(day,k,nCols):'');}).join('');
+  return `<div class="plan"><div class="cap">Deck plan · typical path — ${slots} visible slots · queued missions start counting only when they enter · click a deck row to inspect it</div>
     <table><thead><tr><th>#</th><th>Deck</th>
+    <th title="fun score 0-100: near-even win feel + surprise events + agency">Fun</th>
     ${ms.map((m,j)=>`<th>${j<slots?'':'⏳ '}${M29[MI[m.type]][1]} ×${m.target}${m.due?` <span style="color:var(--gold)">→d${m.due}</span>`:''}</th>`).join('')}
-    <th title="tokens collected so far — typical path, then the sim expectation">Tokens</th>
+    <th title="tokens collected so far on the typical path (hover for the sim expectation)">Tokens</th>
     <th title="chance every mission is complete by the end of this deck">Day done</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
@@ -747,10 +847,11 @@ function render(){
         <th title="tokens ÷ ~matches — reward per match of effort">Tok/Effort</th><th>P</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table>`
         :`<div class="dim" style="font-size:12px;padding:4px 0">empty — click missions in the bank</div>`}
-      ${deckPlanHTML(day)}
+      ${deckPlanHTML(day,di)}
     </div>`;}).join('')
     +`<button class="adddaybig" data-addday title="add another day to the plan">+ Add day</button>`;
   renderChests();
+  renderEffort();
   renderCurves();
   save();
 }
@@ -809,6 +910,76 @@ function renderChests(){
       <td class="${de?'ok':''}" style="font-family:var(--mono)">${de?'day '+de:'—'}</td>
       <td><button class="x" data-crm="${i}">✕</button></td></tr>`;}).join('')
     ||'<tr><td colspan="6" class="dim" style="text-align:left">no chests — add 2–5</td></tr>';
+}
+function renderEffort(){
+  const elD=document.getElementById('effDays'),elC=document.getElementById('effChests');
+  if(!ST.days.length){
+    elD.innerHTML=elC.innerHTML='<div class="dim" style="font-size:12px">add days first</div>';return;}
+  const stats=ST.days.map(d=>dayStats(d));
+  { // per day: allotted matches (frame) vs typical matches to finish all missions (gold), expected missions done on top
+    const data=ST.days.map((d,i)=>{
+      const s=stats[i];
+      if(!s.sim)return {H:d.matches||d.deckCount||3,need:null,doneExp:0,n:0};
+      const tl=timelineForDay(d,'per');
+      const allDone=tl.ms.length&&tl.ms.every(m=>m.done!=null);
+      return {H:s.sim.H,
+        need:allDone?Math.max(...tl.ms.map(m=>m.done)):null,
+        doneExp:s.per.reduce((a,x)=>a+x.p,0),n:s.per.length};});
+    const maxH=Math.max(...data.map(x=>x.H),1);
+    const bw=36,gap=24,pl=34,w=pl+data.length*(bw+gap)+12,h=190,pt=30,pb=22;
+    const Y=v=>pt+(1-v/maxH)*(h-pt-pb);
+    let g='';
+    [0,Math.round(maxH/2),maxH].forEach(v=>{
+      g+=`<line x1="${pl-4}" x2="${w-6}" y1="${Y(v)}" y2="${Y(v)}" stroke="#22302B"/>
+      <text x="${pl-8}" y="${Y(v)+3}" text-anchor="end" font-size="9" fill="#8B9A93" font-family="IBM Plex Mono">${v}</text>`;});
+    data.forEach((x,i)=>{
+      const X=pl+i*(bw+gap);
+      g+=`<rect x="${X}" y="${Y(x.H)}" width="${bw}" height="${Math.max(1,h-pb-Y(x.H))}" fill="#1A2320" stroke="#2E4038" rx="4"/>`;
+      if(x.need!=null)
+        g+=`<rect x="${X+4}" y="${Y(x.need)}" width="${bw-8}" height="${Math.max(1,h-pb-Y(x.need))}" fill="#C9A55C" opacity=".9" rx="3"/>
+        <text x="${X+bw/2}" y="${Y(x.need)-4}" text-anchor="middle" font-size="9.5" fill="#C9A55C" font-family="IBM Plex Mono">${x.need.toFixed(1)}m</text>`;
+      else if(x.n)
+        g+=`<rect x="${X+4}" y="${Y(x.H)}" width="${bw-8}" height="${Math.max(1,h-pb-Y(x.H))}" fill="#C75950" opacity=".5" rx="3"/>
+        <text x="${X+bw/2}" y="${Y(x.H)-4}" text-anchor="middle" font-size="9.5" fill="#C75950" font-family="IBM Plex Mono">&gt;${x.H}m</text>`;
+      if(x.n)g+=`<text x="${X+bw/2}" y="12" text-anchor="middle" font-size="9.5" fill="#E4E9E5" font-family="IBM Plex Mono">${x.doneExp.toFixed(1)}/${x.n}</text>`;
+      g+=`<text x="${X+bw/2}" y="${h-7}" text-anchor="middle" font-size="9.5" fill="#8B9A93" font-family="IBM Plex Mono">d${i+1}</text>`;});
+    elD.innerHTML=`<svg viewBox="0 0 ${w} ${h}" style="max-width:${w}px">${g}</svg>
+      <div class="legend"><span><i style="background:#1A2320;border:1px solid #2E4038"></i>matches allotted</span>
+      <span><i style="background:#C9A55C"></i>typical matches to finish all</span>
+      <span>top = expected missions done</span></div>`;
+  }
+  { // between chests: expected matches from one milestone to the next
+    const chests=[...ST.chests].sort((a,b)=>a.tokens-b.tokens);
+    if(!chests.length){elC.innerHTML='<div class="dim" style="font-size:12px">no chests — add 2–5</div>';return;}
+    const byMatch=tokensByMatchArr(stats);
+    let prev=0;
+    const segs=chests.map(c=>{
+      const idx=byMatch.findIndex(v=>v>=c.tokens);
+      const at=idx<0?null:idx+1;
+      const seg=at==null?null:at-prev;
+      if(at!=null)prev=at;
+      return {seg,at,tokens:c.tokens};});
+    const maxS=Math.max(...segs.map(s=>s.seg||0),1);
+    const bw=36,gap=24,pl=34,w=pl+segs.length*(bw+gap)+12,h=190,pt=30,pb=22;
+    const Y=v=>pt+(1-v/maxS)*(h-pt-pb);
+    let g='';
+    [0,Math.round(maxS/2),maxS].forEach(v=>{
+      g+=`<line x1="${pl-4}" x2="${w-6}" y1="${Y(v)}" y2="${Y(v)}" stroke="#22302B"/>
+      <text x="${pl-8}" y="${Y(v)+3}" text-anchor="end" font-size="9" fill="#8B9A93" font-family="IBM Plex Mono">${v}</text>`;});
+    segs.forEach((s,i)=>{
+      const X=pl+i*(bw+gap);
+      if(s.seg!=null)
+        g+=`<rect x="${X}" y="${Y(s.seg)}" width="${bw}" height="${Math.max(1,h-pb-Y(s.seg))}" fill="#5BB98A" opacity=".85" rx="4"/>
+        <text x="${X+bw/2}" y="${Y(s.seg)-4}" text-anchor="middle" font-size="9.5" fill="#5BB98A" font-family="IBM Plex Mono">${s.seg}m</text>
+        <text x="${X+bw/2}" y="12" text-anchor="middle" font-size="9" fill="#8B9A93" font-family="IBM Plex Mono">@m${s.at}</text>`;
+      else
+        g+=`<rect x="${X}" y="${Y(maxS)}" width="${bw}" height="${Math.max(1,h-pb-Y(maxS))}" fill="#C75950" opacity=".4" rx="4"/>
+        <text x="${X+bw/2}" y="${Y(maxS)-4}" text-anchor="middle" font-size="9" fill="#C75950" font-family="IBM Plex Mono">unreached</text>`;
+      g+=`<text x="${X+bw/2}" y="${h-7}" text-anchor="middle" font-size="9.5" fill="#8B9A93" font-family="IBM Plex Mono">🎁${i+1}·${s.tokens}t</text>`;});
+    elC.innerHTML=`<svg viewBox="0 0 ${w} ${h}" style="max-width:${w}px">${g}</svg>
+      <div class="legend"><span><i style="background:#5BB98A"></i>expected matches since previous chest</span>
+      <span>@m = global match where it unlocks</span></div>`;
+  }
 }
 function renderCurves(){
   const day=ST.days[ST.active];
@@ -944,8 +1115,19 @@ document.getElementById('bank').addEventListener('click',e=>{
     tokens:tokDefault(rate)});
   render();});
 document.getElementById('days').addEventListener('click',e=>{
-  const b=e.target.closest('button');if(!b)return;
+  const b=e.target.closest('button');
+  if(!b){
+    if(e.target.closest('input,select,a'))return;
+    const row=e.target.closest('[data-insp]');
+    if(row){INSP=INSP===row.dataset.insp?null:row.dataset.insp;render();}
+    return;
+  }
   const d=b.dataset;
+  if(d.play1!=null){
+    const payload={ids:[d.play1],model:'book',mFrom:1,mTo:null,mRuns:100};
+    const enc=btoa(JSON.stringify(payload)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    window.open('index.html#j='+enc,'_blank');return;
+  }
   if(d.addday!=null){ST.days.push(newDay());ST.active=ST.days.length-1;render();return;}
   if(d.refit!=null){const i=+d.refit;
     fitDay(ST.days[i],new Set(ST.days.filter(x=>x!==ST.days[i])
