@@ -42,6 +42,10 @@
   input[type=number]{background:var(--inset);border:1px solid var(--line);color:var(--text);
     padding:5px 7px;border-radius:6px;font-family:var(--mono);font-size:12px;width:58px}
   input:focus{outline:none;border-color:var(--gold)}
+  input[type=number]:disabled{opacity:.55;color:var(--gold)}
+  select{background:var(--inset);border:1px solid var(--line);color:var(--text);
+    padding:5px 7px;border-radius:6px;font-family:var(--mono);font-size:11.5px}
+  select:focus{outline:none;border-color:var(--gold)}
   .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:16px 0}
   .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
   .err{color:var(--lose);font-family:var(--mono);font-size:12px;min-height:16px}
@@ -188,8 +192,9 @@
     <span class="lbl" id="tokInfo"></span>
   </div>
   <div id="chestBar"></div>
-  <table id="chestTbl" style="max-width:640px"><thead><tr>
-    <th>#</th><th>Tokens</th><th>Bonus $</th><th>Unlocks (exp.)</th><th></th>
+  <table id="chestTbl" style="max-width:760px"><thead><tr>
+    <th>#</th><th title="anchor the chest to a point: fixed tokens, end of a day, or a global match number — day/match derive the token threshold from the expected tokens collected by that point">Unlock by</th>
+    <th>Tokens</th><th>Bonus $</th><th>Unlocks (exp.)</th><th></th>
   </tr></thead><tbody></tbody></table>
 </div>
 
@@ -692,11 +697,32 @@ function render(){
   renderCurves();
   save();
 }
+function tokensByMatchArr(stats){          // cumulative EXPECTED tokens after each global match
+  const out=[];let base=0;
+  ST.days.forEach((d,i)=>{
+    const ms=d.missions||[],sim=stats[i].sim;
+    if(!ms.length||!sim)return;
+    for(let k=0;k<sim.H;k++)
+      out.push(base+ms.reduce((a,m,j)=>a+m.tokens*sim.doneByMatch[j][k],0));
+    base+=stats[i].tokExp;
+  });
+  return out;
+}
 function renderChests(){
   const stats=ST.days.map(d=>dayStats(d));
   const cum=[];let a=0,mx=0;const cumMax=[];
   stats.forEach(s=>{a+=s.tokExp;mx+=s.tokMax;cum.push(a);cumMax.push(mx);});
+  const byMatch=tokensByMatchArr(stats);
+  for(const c of ST.chests){               // day/match-anchored chests: tokens follow the plan
+    if(c.by==='day'&&cum.length)
+      c.tokens=Math.max(1,Math.floor(cum[Math.min(Math.max(1,c.at||1),cum.length)-1]));
+    else if(c.by==='match'&&byMatch.length)
+      c.tokens=Math.max(1,Math.floor(byMatch[Math.min(Math.max(1,c.at||1),byMatch.length)-1]));
+  }
   const chests=[...ST.chests].sort((x,y)=>x.tokens-y.tokens);
+  for(let i=1;i<chests.length;i++)          // keep auto thresholds strictly increasing (rule: 2–5 ascending)
+    if(chests[i].tokens<=chests[i-1].tokens&&(chests[i].by==='day'||chests[i].by==='match'))
+      chests[i].tokens=chests[i-1].tokens+1;
   const scale=Math.max(mx,chests.length?chests[chests.length-1].tokens:0,1);
   const pct=v=>Math.max(0,Math.min(100,100*v/scale));
   document.getElementById('tokInfo').textContent=ST.days.length
@@ -713,12 +739,19 @@ function renderChests(){
   const firstDay=t=>{const k=cum.findIndex(v=>v>=t);return k<0?null:k+1;};
   document.querySelector('#chestTbl tbody').innerHTML=chests.map((c,i)=>{
     const de=firstDay(c.tokens);
+    const by=c.by||'tok',auto=by!=='tok';
+    const atMax=by==='day'?Math.max(1,cum.length):Math.max(1,byMatch.length);
     return `<tr><td>${i+1}</td>
-      <td><input type="number" min="1" value="${c.tokens}" data-ct="${i}"></td>
+      <td style="white-space:nowrap"><select data-cb="${i}">
+          <option value="tok"${by==='tok'?' selected':''}>tokens</option>
+          <option value="day"${by==='day'?' selected':''}>end of day</option>
+          <option value="match"${by==='match'?' selected':''}>match #</option>
+        </select>${auto?` <input type="number" min="1" max="${atMax}" value="${Math.min(c.at||1,atMax)}" data-ca="${i}" style="width:56px">`:''}</td>
+      <td><input type="number" min="1" value="${c.tokens}" data-ct="${i}"${auto?' disabled title="derived automatically — expected tokens collected by that point"':''}></td>
       <td><input type="number" min="0" step="0.05" value="${(+c.cash).toFixed(2)}" data-cc="${i}"></td>
       <td class="${de?'ok':''}" style="font-family:var(--mono)">${de?'day '+de:'—'}</td>
       <td><button class="x" data-crm="${i}">✕</button></td></tr>`;}).join('')
-    ||'<tr><td colspan="5" class="dim" style="text-align:left">no chests — add 2–5</td></tr>';
+    ||'<tr><td colspan="6" class="dim" style="text-align:left">no chests — add 2–5</td></tr>';
 }
 function renderCurves(){
   const day=ST.days[ST.active];
@@ -902,6 +935,10 @@ document.getElementById('chestTbl').addEventListener('change',e=>{
   const t=e.target,sorted=[...ST.chests].sort((x,y)=>x.tokens-y.tokens);
   if(t.dataset.ct!=null)sorted[+t.dataset.ct].tokens=Math.max(1,+t.value||1);
   else if(t.dataset.cc!=null)sorted[+t.dataset.cc].cash=Math.max(0,+t.value||0);
+  else if(t.dataset.cb!=null){const c=sorted[+t.dataset.cb];
+    if(t.value==='tok'){delete c.by;delete c.at;}
+    else{c.by=t.value;c.at=c.at||1;}}
+  else if(t.dataset.ca!=null)sorted[+t.dataset.ca].at=Math.max(1,+t.value||1);
   else return;render();});
 
 /* ═══════════════ daily schedule ═══════════════ */
