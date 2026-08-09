@@ -644,16 +644,20 @@ function fitDay(day,usedElsewhere){
   const K=day.deckCount||+document.getElementById('decksPerDay').value||3;
   const slots=Math.max(1,ST.slots||3);
   let pool=fitCandidates(day);
-  // fun range: hard filter when it leaves enough candidates, otherwise a soft
-  // penalty so the fit degrades gracefully instead of failing
+  // fun + RTP ranges: hard filter when enough candidates satisfy both,
+  // otherwise soft penalties so the fit degrades gracefully instead of failing
   const lo=day.funMin??null,hi=day.funMax??null;
-  let funPenalty=null;
-  if(lo!=null||hi!=null){
-    const fdist=d=>{const s=funOf(d);
-      return Math.max(lo!=null?lo-s:0,hi!=null?s-(hi):0,0);};
-    const inR=pool.filter(d=>fdist(d)===0);
+  const rlo=day.rtpMin??null,rhi=day.rtpMax??null;
+  const funB=lo!=null||hi!=null,rtpB=rlo!=null||rhi!=null;
+  const fdist=d=>{const s=funOf(d);
+    return Math.max(lo!=null?lo-s:0,hi!=null?s-hi:0,0);};
+  const rdist=d=>{const v=deckKPIs(d,30).rtp;
+    return Math.max(rlo!=null?rlo-v:0,rhi!=null?v-rhi:0,0);};
+  let funPenalty=null,rtpPenalty=null;
+  if(funB||rtpB){
+    const inR=pool.filter(d=>(!funB||fdist(d)===0)&&(!rtpB||rdist(d)===0));
     if(inR.length>=K)pool=inR;
-    else funPenalty=fdist;
+    else{funPenalty=funB?fdist:null;rtpPenalty=rtpB?rdist:null;}
   }
   const used=usedElsewhere||new Set(ST.days.filter(d=>d!==day)
     .flatMap(d=>d.decks||[]).map(String));
@@ -670,7 +674,7 @@ function fitDay(day,usedElsewhere){
       const id=String(d.deck_id);
       if(used.has(id)||chosen.includes(id))continue;
       const r=deckRates(d,30);
-      let s=funPenalty?-0.15*funPenalty(d):0;
+      let s=(funPenalty?-0.15*funPenalty(d):0)+(rtpPenalty?-30*rtpPenalty(d):0);
       for(const j of vis){
         const m=ms[j],T=m.target;
         const proj=cum[j]+r[MI[m.type]];
@@ -707,7 +711,8 @@ function fitDay(day,usedElsewhere){
 const daySig=day=>(day.missions||[]).map(m=>m.type+':'+m.target+':'+(m.due||0)).join('|')
   +'#'+(day.deckCount||3)+'@'+SUIT_MODEL+'&'+(ST.slots||3)
   +'£'+(day.funMin??'')+'-'+(day.funMax??'')
-  +'¤'+Object.entries(ST.funOverrides||{}).map(([k,v])=>k+':'+v).join(','); // queue order, fun range and overrides all shape the fit
+  +'₪'+(day.rtpMin??'')+'-'+(day.rtpMax??'')
+  +'¤'+Object.entries(ST.funOverrides||{}).map(([k,v])=>k+':'+v).join(','); // queue order, fun/rtp ranges and overrides all shape the fit
 
 /* ═══════════════ render ═══════════════ */
 const pcls=p=>p>=0.7?'pg':p>=0.35?'pm':'pr';
@@ -863,6 +868,8 @@ function render(){
         <span class="lbl" title="how many matches the player actually plays this day — matches beyond the fitted decks run on this day's average deck">matches</span><input type="number" min="1" max="60" value="${day.matches||day.deckCount||3}" data-mc="${di}">
         <span class="lbl" title="fit only decks whose fun score (0-100) falls in this range — blank = any. If too few decks qualify, the nearest ones are used">fun</span><input type="number" min="0" max="100" value="${day.funMin??''}" placeholder="min" data-fmin="${di}" style="width:48px">
         <span class="lbl" style="margin:0 -4px">–</span><input type="number" min="0" max="100" value="${day.funMax??''}" placeholder="max" data-fmax="${di}" style="width:48px">
+        <span class="lbl" title="fit only decks whose RTP (money returned ÷ wagered) falls in this range — blank = any. If too few decks qualify, the nearest ones are used. e.g. 0.85–1.00 keeps the day house-safe">rtp</span><input type="number" min="0" max="3" step="0.01" value="${day.rtpMin??''}" placeholder="min" data-rmin="${di}" style="width:54px">
+        <span class="lbl" style="margin:0 -4px">–</span><input type="number" min="0" max="3" step="0.01" value="${day.rtpMax??''}" placeholder="max" data-rmax="${di}" style="width:54px">
         <span class="lbl">all missions</span><span class="pb ${pcls(s.all)}">${ptx(s.all)}</span>
         ${(day.decks||[]).length&&day.fitSig!==daySig(day)
           ?`<button class="pb pr" style="border:none;cursor:pointer" data-refit="${di}"
@@ -1202,6 +1209,10 @@ document.getElementById('days').addEventListener('change',e=>{
     ST.days[+d.fmin].funMin=v==null?undefined:v;}
   else if(d.fmax!=null){const v=t.value===''?null:Math.max(0,Math.min(100,+t.value));
     ST.days[+d.fmax].funMax=v==null?undefined:v;}
+  else if(d.rmin!=null){const v=t.value===''?null:Math.max(0,Math.min(3,+t.value));
+    ST.days[+d.rmin].rtpMin=v==null?undefined:v;}
+  else if(d.rmax!=null){const v=t.value===''?null:Math.max(0,Math.min(3,+t.value));
+    ST.days[+d.rmax].rtpMax=v==null?undefined:v;}
   else if(d.funov!=null){const v=t.value===''?null:Math.max(0,Math.min(100,+t.value));
     ST.funOverrides=ST.funOverrides||{};
     if(v==null)delete ST.funOverrides[d.funov];else ST.funOverrides[d.funov]=v;}
