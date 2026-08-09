@@ -649,6 +649,65 @@ function fitCandidates(day){
   }
   return [...set.values()];
 }
+// fluid slot timeline over an arbitrary rate matrix — the fit's objective function
+function fluidEval(ms,rateRow,K,slots){
+  const st=ms.map(m=>({t:m.target,prog:0,done:null,serve:null}));
+  const vis=[],queue=ms.map((_,j)=>j);
+  const serveN=t=>{while(vis.length<slots&&queue.length){
+    const j=queue.shift();st[j].serve=t;vis.push(j);}};
+  let t=0;serveN(0);
+  for(let m=0;m<K;m++){
+    let guard=0;
+    while(t<m+1&&vis.length&&guard++<100){
+      let best=null,bt=Infinity;
+      for(const j of vis){const r=rateRow(j,m);if(r<=1e-9)continue;
+        const tc=t+(st[j].t-st[j].prog)/r;if(tc<bt){bt=tc;best=j;}}
+      if(best==null||bt>m+1){
+        for(const j of vis)st[j].prog+=rateRow(j,m)*(m+1-t);t=m+1;break;}
+      for(const j of vis)st[j].prog+=rateRow(j,m)*(bt-t);
+      t=bt;st[best].done=t;st[best].prog=st[best].t;
+      vis.splice(vis.indexOf(best),1);serveN(t);
+    }
+    t=Math.max(t,m+1);
+  }
+  return st;
+}
+// loss of a concrete deck list: squared due misses dominate, unfinished missions hurt
+function planLoss(ms,deckList,slots){
+  const R=poolRates();
+  const rates=deckList.map(id=>{const d=BYID.get(String(id));return d?deckRates(d,30):null;});
+  const rateRow=(j,k)=>rates[k]?rates[k][MI[ms[j].type]]:R[MI[ms[j].type]];
+  const st=fluidEval(ms,rateRow,deckList.length,slots);
+  let L=0;
+  ms.forEach((m,j)=>{
+    const s=st[j];
+    if(m.due){
+      if(s.done==null)L+=Math.pow(deckList.length+3-m.due,2)+10*(1-s.prog/m.target);
+      else L+=Math.pow(Math.ceil(s.done)-m.due,2);
+    }else{
+      // probabilistic: the typical path alone hides fragile completions —
+      // penalise by log P(complete) over the mission's served window
+      let lam=0;
+      if(s.serve!=null)
+        for(let k2=Math.floor(s.serve);k2<deckList.length;k2++)lam+=rateRow(j,k2);
+      L-=3*Math.log(Math.max(s.serve==null?0:poisAtLeast(lam,m.target),1e-9));
+      if(s.done!=null)L+=0.02*s.done;      // mild preference for finishing free missions early
+    }
+  });
+  return L;
+}
+// fun / RTP range distance expressed in loss units (0 when inside the ranges)
+function constraintPenFn(day){
+  const lo=day.funMin??null,hi=day.funMax??null;
+  const rlo=day.rtpMin??null,rhi=day.rtpMax??null;
+  if(lo==null&&hi==null&&rlo==null&&rhi==null)return null;
+  return d=>{
+    const f=funOf(d),v=deckKPIs(d,30).rtp;
+    const fd=Math.max(lo!=null?lo-f:0,hi!=null?f-hi:0,0);
+    const rd=Math.max(rlo!=null?rlo-v:0,rhi!=null?v-rhi:0,0);
+    return 0.03*fd*fd+400*rd*rd;
+  };
+}
 function fitDay(day,usedElsewhere){
   const ms=day.missions||[];if(!ms.length)return;
   const K=day.deckCount||+document.getElementById('decksPerDay').value||3;
@@ -695,7 +754,9 @@ function fitDay(day,usedElsewhere){
           const dd=Math.max(m.due,d0+1);
           const ideal=T*Math.min(1,(k+1-d0)/(dd-d0));
           const dev=(Math.min(proj,T)-ideal)/T;
-          s-=(dev>0?8:2)*dev*dev;
+          // lagging gets more expensive as the due approaches (urgency), while
+          // finishing early stays expensive throughout
+          s-=(dev>0?8:2+8*Math.pow((k+1)/dd,2))*dev*dev;
         }else{
           const lam=proj+(K-k-1)*R[MI[m.type]];
           s+=Math.log(Math.max(poisAtLeast(lam,T),1e-9));
@@ -715,6 +776,34 @@ function fitDay(day,usedElsewhere){
       }
     }
   }
+  // refinement: local swaps against the actual slot timeline. The greedy pass
+  // can't revisit early picks, so due misses accumulate — two sweeps of
+  // best-swap-per-position fix most of them.
+  if(chosen.length){
+    const pen=constraintPenFn(day);
+    const penOf=new Map();
+    const penFor=id=>{if(!pen)return 0;
+      if(!penOf.has(id))penOf.set(id,pen(BYID.get(id))||0);
+      return penOf.get(id);};
+    const cand=pool.map(d=>String(d.deck_id))
+      .filter(id=>!used.has(id)&&BYID.has(id));
+    const tot=list=>planLoss(ms,list,slots)+list.reduce((a,id)=>a+penFor(id),0);
+    let bestL=tot(chosen);
+    for(let sweep=0;sweep<2;sweep++){
+      let improved=false;
+      for(let k=0;k<chosen.length;k++){
+        let bestId=chosen[k],bl=bestL;
+        for(const id of cand){
+          if(chosen.includes(id))continue;
+          const trial=chosen.slice();trial[k]=id;
+          const L=tot(trial);
+          if(L<bl-1e-9){bl=L;bestId=id;}
+        }
+        if(bestId!==chosen[k]){chosen[k]=bestId;bestL=bl;improved=true;}
+      }
+      if(!improved)break;
+    }
+  }
   day.decks=chosen;
   day.fitSig=daySig(day);          // remember what the decks were fitted FOR
 }
@@ -728,7 +817,7 @@ const daySig=day=>(day.missions||[]).map(m=>m.type+':'+m.target+':'+(m.due||0)).
 const pcls=p=>p>=0.7?'pg':p>=0.35?'pm':'pr';
 const ptx=p=>(100*p).toFixed(0)+'%';
 let INSP=null;                             // open deck inspector: 'di:k' or null
-function inspectorHTML(day,k,cols){        // KPI drill-down for the deck at position k
+function inspectorHTML(day,di,k,cols){     // KPI drill-down for the deck at position k
   const id=String((day.decks||[])[k]),d=BYID.get(id);
   if(!d)return '';
   const kp=deckKPIs(d,30),funComp=funScore(kp);
@@ -761,7 +850,10 @@ function inspectorHTML(day,k,cols){        // KPI drill-down for the deck at pos
       ${chip('Dealer bust',kp.dbustPerM.toFixed(1)+'/m','dealer busts per match')}
       ${chip('Splits',kp.splitPerM.toFixed(1)+'/m','splits per match')}
       ${chip('Doubles',`${kp.dblPerM.toFixed(1)}/m · ${(100*kp.dblWinPct).toFixed(0)}%W`,'doubles per match and their win rate')}
-      <button data-play1="${id}" style="align-self:center" title="open just this deck in Deck Room">Play ↗</button>
+      <span style="align-self:center;display:flex;gap:6px">
+        <button data-swap="${di}:${k}" title="re-pick the best deck for THIS position under the current constraints (fun/RTP ranges, overrides, due pacing), keeping every other deck">Replace deck ⟳</button>
+        <button data-play1="${id}" title="open just this deck in Deck Room">Play ↗</button>
+      </span>
     </div>
     <div class="cap" style="margin:12px 0 4px">QA per event — this deck vs pool average</div>
     <table style="max-width:560px"><thead><tr><th>Mission</th><th>This deck</th><th>Pool</th><th>Rel.</th></tr></thead>
@@ -821,7 +913,7 @@ function deckPlanHTML(day,di){             // deck list, played in order, with s
       <td title="tokens collected on the typical path · sim expectation: ~${expTok.toFixed(1)}"
         style="font-family:var(--mono)"><b style="color:var(--gold)">${typTok}</b></td>
       <td><span class="pb ${pcls(sim.allByMatch[k])}">${ptx(sim.allByMatch[k])}</span></td></tr>`
-      +(open?inspectorHTML(day,k,nCols):'');}).join('');
+      +(open?inspectorHTML(day,di,k,nCols):'');}).join('');
   return `<div class="plan"><div class="cap">Deck plan · typical path — ${slots} visible slots · queued missions start counting only when they enter · click a deck row to inspect it</div>
     <table><thead><tr><th>#</th><th>Deck</th>
     <th title="fun score 0-100: near-even win feel + surprise events + agency · * = manual override">Fun</th>
@@ -1205,6 +1297,32 @@ document.getElementById('days').addEventListener('click',e=>{
     const payload={ids:[d.play1],model:'book',mFrom:1,mTo:null,mRuns:100};
     const enc=btoa(JSON.stringify(payload)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
     window.open('index.html#j='+enc,'_blank');return;
+  }
+  if(d.swap!=null){
+    const [di,k]=d.swap.split(':').map(Number);
+    const day=ST.days[di],ms=day.missions||[];
+    const slots=Math.max(1,ST.slots||3);
+    const used=new Set(ST.days.filter(x=>x!==day).flatMap(x=>x.decks||[]).map(String));
+    const pen=constraintPenFn(day),penOf=new Map();
+    const penFor=id=>{if(!pen)return 0;
+      if(!penOf.has(id))penOf.set(id,pen(BYID.get(id))||0);
+      return penOf.get(id);};
+    const tot=list=>planLoss(ms,list,slots)+list.reduce((a,id)=>a+penFor(id),0);
+    const cur=String(day.decks[k]);
+    let bestId=cur,bestL=tot(day.decks.map(String));
+    for(const cd of fitCandidates(day)){
+      const id=String(cd.deck_id);
+      if(id===cur||used.has(id)||day.decks.map(String).includes(id))continue;
+      const trial=day.decks.map(String);trial[k]=id;
+      const L=tot(trial);
+      if(L<bestL-1e-9){bestL=L;bestId=id;}
+    }
+    if(bestId===cur){
+      document.getElementById('err').textContent='This deck is already the best available for position '+(k+1)+' under the current constraints.';
+    }else{
+      day.decks[k]=bestId;day.fitSig=daySig(day);INSP=di+':'+k;
+    }
+    render();return;
   }
   if(d.addday!=null){ST.days.push(newDay());ST.active=ST.days.length-1;render();return;}
   if(d.refit!=null){const i=+d.refit;
