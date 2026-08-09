@@ -85,6 +85,10 @@
   .x:hover{color:var(--lose)}
   .dim{color:var(--muted)}
   .decks{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px}
+  .adddaybig{display:block;width:100%;padding:12px;margin-bottom:12px;cursor:pointer;
+    background:none;border:1px dashed var(--line2);border-radius:12px;color:var(--muted);
+    font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+  .adddaybig:hover{border-color:var(--gold);color:var(--gold)}
   .plan{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px;overflow-x:auto}
   .plan .cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
     color:var(--muted);margin-bottom:6px}
@@ -151,7 +155,7 @@
 <div class="bar">
   <span class="lbl">Days</span>
   <span id="dayChips" style="display:flex;gap:6px;flex-wrap:wrap"></span>
-  <button id="addDay">+1</button><button id="addDay3">+3</button>
+  <button id="addDay">+ Day</button><button id="addDay3">+ 3 Days</button>
   <span class="lbl" style="margin-left:14px">Decks / day</span>
   <input type="number" id="decksPerDay" value="3" min="1" max="10">
   <button class="primary" id="fitAll">Fit decks</button>
@@ -560,12 +564,15 @@ function render(){
       const tip=dr!=null
         ?`on this day's decks: ${(dr/K).toFixed(2)}/match · pool average: ${pool.toFixed(2)}/match — refit if the decks weren't chosen for this mission`
         :`pool average: ${pool.toFixed(2)}/match (no decks fitted yet)`;
+      const tpe=med==null?null:x.m.tokens/med;
       return `<tr>
         <td>${M29[MI[x.m.type]][1]}</td>
         <td><input type="number" min="1" value="${x.m.target}" data-t="${di}:${j}"></td>
         <td><input type="number" min="1" value="${x.m.tokens}" data-k="${di}:${j}"></td>
         <td class="dim" title="${tip}">${med==null?'—':'~'+med+'m'}${
           dr!=null&&dr/K<pool*0.6?' <span style="color:var(--lose)">▼</span>':''}</td>
+        <td class="dim" title="tokens per match of effort — ${x.m.tokens} tokens ÷ ~${med==null?'∞':med} matches to complete. Higher = generous, lower = grindy.">${
+          tpe==null?'—':`<b style="color:${tpe>=5?'var(--win)':tpe>=2?'var(--gold)':'var(--lose)'}">${tpe.toFixed(1)}</b>`}</td>
         <td><span class="pb ${pcls(x.p)}">${ptx(x.p)}</span></td>
         <td><button class="x" data-rm="${di}:${j}">✕</button></td></tr>`;}).join('');
     return `<div class="day ${di===ST.active?'active':''}">
@@ -577,8 +584,10 @@ function render(){
           ?`<button class="pb pr" style="border:none;cursor:pointer" data-refit="${di}"
              title="Missions or targets changed after the decks were fitted — the decks aren't optimised for the current list. Click to refit.">decks stale — refit</button>`
           :(day.decks||[]).length?'':`<button data-refit="${di}">Fit decks</button>`}
-        <span class="lbl">tokens</span><span style="font-family:var(--mono);font-size:12px">
-          <b style="color:var(--gold)">${s.tokExp.toFixed(0)}</b> / ${s.tokMax}</span>
+        <span class="lbl">tokens</span><span style="font-family:var(--mono);font-size:12px"
+          title="expected tokens / max tokens · per deck = expected ÷ ${day.deckCount||3} decks">
+          <b style="color:var(--gold)">${s.tokExp.toFixed(0)}</b> / ${s.tokMax}
+          <span class="dim">· ${(s.tokExp/(day.deckCount||3)).toFixed(1)}/deck</span></span>
         <span style="margin-left:auto;display:flex;gap:6px">
           <button data-fit="${di}">Fit decks</button>
           <button data-play="${di}" title="open this day's decks as a Deck Room journey">Play ↗</button>
@@ -586,11 +595,13 @@ function render(){
         </span>
       </div>
       ${rows?`<table><thead><tr><th>Mission</th><th>Target</th><th>Tokens</th>
-        <th title="median matches to complete at this target">~Matches</th><th>P</th><th></th></tr></thead>
+        <th title="median matches to complete at this target">~Matches</th>
+        <th title="tokens ÷ ~matches — reward per match of effort">Tok/Effort</th><th>P</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table>`
         :`<div class="dim" style="font-size:12px;padding:4px 0">empty — click missions in the bank</div>`}
       ${deckPlanHTML(day)}
-    </div>`;}).join('');
+    </div>`;}).join('')
+    +`<button class="adddaybig" data-addday title="add another day to the plan">+ Add day</button>`;
   renderChests();
   renderCurves();
   save();
@@ -757,6 +768,7 @@ document.getElementById('bank').addEventListener('click',e=>{
 document.getElementById('days').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;
   const d=b.dataset;
+  if(d.addday!=null){ST.days.push(newDay());ST.active=ST.days.length-1;render();return;}
   if(d.refit!=null){const i=+d.refit;
     fitDay(ST.days[i],new Set(ST.days.filter(x=>x!==ST.days[i])
       .flatMap(x=>x.decks||[]).map(String)));render();return;}
