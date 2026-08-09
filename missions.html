@@ -470,10 +470,11 @@ function deckKPIs(deck,runs){
   const seq=deck.cards.split('');
   const bid=BigInt(deck.deck_id);
   const base=hashSeed(Number(bid&0xffffffffn),Number(bid>>32n));
-  let rounds=0,W=0,L=0,P=0,B=0,DB=0,R21=0,SP=0,DD=0,DW=0,rtpS=0,rtpN=0;
+  let rounds=0,W=0,L=0,P=0,B=0,DB=0,R21=0,SP=0,DD=0,DW=0,rtpS=0,rtpN=0,debS=0,credS=0;
   for(let k=0;k<runs;k++){
     const log=playMatch(seq,reasonable(mulberry32(hashSeed(0x5EED,base,k))));
     rounds+=log.length;
+    debS+=log.deb;credS+=log.cred;
     if(log.deb>0){rtpS+=log.cred/log.deb;rtpN++;}
     for(const r of log){
       if(total(r.dealer)[0]>21)DB++;
@@ -490,7 +491,8 @@ function deckKPIs(deck,runs){
   const hands=Math.max(1,W+L+P);
   const out={rounds:rounds/runs,winPct:W/hands,losePct:L/hands,pushPct:P/hands,
     bustPct:B/hands,dbustPerM:DB/runs,r21PerM:R21/runs,splitPerM:SP/runs,
-    dblPerM:DD/runs,dblWinPct:DD?DW/DD:0,ratio:L?W/L:9,rtp:rtpN?rtpS/rtpN:1};
+    dblPerM:DD/runs,dblWinPct:DD?DW/DD:0,ratio:L?W/L:9,rtp:rtpN?rtpS/rtpN:1,
+    debM:debS/runs,credM:credS/runs};
   KCACHE.set(key,out);
   if(KCACHE.size>3000)KCACHE.clear();
   return out;
@@ -775,9 +777,12 @@ function deckPlanHTML(day,di){             // deck list, played in order, with s
   const tl=timelineForDay(day,'per');      // the TYPICAL path: when each mission actually enters
   const slots=sim.slots;
   const M=sim.H;                           // matches played (≥ fitted decks)
-  const nCols=ms.length+7;
+  const nCols=ms.length+8;
   const tokVal=chestTokenValue(),stake=ST.stake||1;
-  let prevExpTok=0;
+  let prevExpTok=0,cumDeb=0,cumCred=0;
+  const kpsFit=ids.map(x=>BYID.get(x)).filter(Boolean).map(x=>deckKPIs(x,30));
+  const avgDeb=kpsFit.length?kpsFit.reduce((a,x)=>a+x.debM,0)/kpsFit.length:0;
+  const avgCred=kpsFit.length?kpsFit.reduce((a,x)=>a+x.credM,0)/kpsFit.length:0;
   const rows=Array.from({length:M},(_,k)=>{
     const real=k<ids.length;
     const dk=real?BYID.get(ids[k]):null;
@@ -789,6 +794,9 @@ function deckPlanHTML(day,di){             // deck list, played in order, with s
     const expTok=ms.reduce((a,m,j)=>a+m.tokens*sim.doneByMatch[j][k],0);
     const margTok=expTok-prevExpTok;prevExpTok=expTok;
     const rtpB=kp?kp.rtp+margTok*tokVal/stake:null;
+    cumDeb+=kp?kp.debM:avgDeb;cumCred+=kp?kp.credM:avgCred;
+    const cumRtp=cumDeb>0?cumCred/cumDeb:null;
+    const cumB=cumRtp!=null?cumRtp+expTok*tokVal/(stake*(k+1)):null;
     const cells=ms.map((m,j)=>{
       const sv=tl.ms[j].serve,dn=tl.ms[j].done;
       const p=sim.doneByMatch[j][k];
@@ -807,6 +815,7 @@ function deckPlanHTML(day,di){             // deck list, played in order, with s
       <td class="dim">${k+1}</td><td>${id}</td>
       <td${ov?' title="manual fun override — open the inspector to change or clear it"':''}>${fun==null?'<span class="dim">—</span>':`<span class="pb ${fun>=70?'pg':fun>=45?'pm':'pr'}">${fun}${ov?'*':''}</span>`}</td>
       <td>${kp?`<b style="font-family:var(--mono);color:${rtpColor(kp.rtp)}" title="return to player on this deck: money returned ÷ money wagered (flat-100 reasonable play, natural ±flat included)">${kp.rtp.toFixed(2)}</b>`:'<span class="dim">—</span>'}</td>
+      <td>${cumRtp!=null?`<b style="font-family:var(--mono);color:${rtpColor(cumRtp)}" title="cumulative RTP over decks 1–${k+1}: total money returned ÷ total wagered so far${kp?'':' (pool decks counted at the day average)'} · incl. mission bonuses: ${cumB.toFixed(2)}">${cumRtp.toFixed(2)}</b>`:'<span class="dim">—</span>'}</td>
       <td>${rtpB!=null?`<b style="font-family:var(--mono);color:${rtpColor(rtpB)}" title="effective RTP incl. mission bonuses: game ${kp.rtp.toFixed(2)} + ${margTok.toFixed(1)} expected tokens on this deck × $${tokVal.toFixed(3)}/token ÷ $${stake} stake${tokVal>0?'':' — add chests to give tokens a $ value'}">${rtpB.toFixed(2)}</b>`:'<span class="dim">—</span>'}</td>
       ${cells}
       <td title="tokens collected on the typical path · sim expectation: ~${expTok.toFixed(1)}"
@@ -817,6 +826,7 @@ function deckPlanHTML(day,di){             // deck list, played in order, with s
     <table><thead><tr><th>#</th><th>Deck</th>
     <th title="fun score 0-100: near-even win feel + surprise events + agency · * = manual override">Fun</th>
     <th title="return to player: money returned ÷ money wagered on this deck">RTP</th>
+    <th title="cumulative RTP over decks 1..k — total money returned ÷ total wagered so far (hover for the value incl. bonuses)">RTP Σ</th>
     <th title="effective RTP after mission bonuses — game RTP + expected tokens earned on this deck × chest $/token ÷ stake $ (set stake in the top bar)">RTP+B</th>
     ${ms.map((m,j)=>`<th>${j<slots?'':'⏳ '}${M29[MI[m.type]][1]} ×${m.target}${m.due?` <span style="color:var(--gold)">→d${m.due}</span>`:''}</th>`).join('')}
     <th title="tokens collected so far on the typical path (hover for the sim expectation)">Tokens</th>
