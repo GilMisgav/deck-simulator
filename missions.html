@@ -635,9 +635,38 @@ function dayStats(day){
     tokExp:per.reduce((a,x)=>a+x.m.tokens*x.p,0),
     tokMax:per.reduce((a,x)=>a+x.m.tokens,0)};
 }
+let EXT_SAMPLE=null;                        // wider sample for due-mission top-ups
+function extSample(){
+  if(EXT_SAMPLE)return EXT_SAMPLE;
+  const n=Math.min(280,DECKS.length);
+  EXT_SAMPLE=Array.from({length:n},(_,i)=>DECKS[Math.floor((i+0.5)*DECKS.length/n)]);
+  return EXT_SAMPLE;
+}
+const TOP3=new Map();                       // mean of the 3 richest / 3 poorest deck rates per type
+function rateBounds(type){
+  const key=type+'@'+SUIT_MODEL;
+  if(TOP3.has(key))return TOP3.get(key);
+  const src=EXT_SAMPLE?[...POOL_SAMPLE,...EXT_SAMPLE]:POOL_SAMPLE;
+  const rs=src.map(d=>deckRates(d,30)[MI[type]]).sort((a,b)=>b-a);
+  const v={top:((rs[0]||0)+(rs[1]||0)+(rs[2]||0))/3,
+    bottom:((rs[rs.length-1]||0)+(rs[rs.length-2]||0)+(rs[rs.length-3]||0))/3};
+  TOP3.set(key,v);return v;
+}
+const top3Rate=type=>rateBounds(type).top;
 function fitCandidates(day){
   poolRates();                              // ensure POOL_SAMPLE exists
   const set=new Map(POOL_SAMPLE.map(d=>[String(d.deck_id),d]));
+  // due missions of ANY category: add the richest decks from a wider 280-deck
+  // sample — the 120 sample alone often can't sustain aggressive dues
+  for(const m of day.missions||[]){
+    if(!m.due)continue;
+    const mi=MI[m.type];
+    if(poolRates()[mi]<=0)continue;
+    const ranked=extSample().map(d=>({d,r:deckRates(d,30)[mi]}))
+      .sort((a,b)=>b.r-a.r).slice(0,12);
+    TOP3.delete(m.type+'@'+SUIT_MODEL);     // recompute with the wider sample available
+    for(const {d} of ranked){const id=String(d.deck_id);if(!set.has(id))set.set(id,d);}
+  }
   // targeted top-up: scan the WHOLE database for decks that fire a day mission on
   // round 1 with certainty (round 1 always deals seq[0..3], so card-pattern types
   // — Opening / 21+3 / Four cards — can be screened statically). This finds rare
@@ -692,7 +721,8 @@ function planLoss(ms,deckList,slots){
     const s=st[j];
     if(m.due){
       if(s.done==null)L+=Math.pow(deckList.length+3-m.due,2)+10*(1-s.prog/m.target);
-      else L+=Math.pow(Math.ceil(s.done)-m.due,2);
+      else{const miss=Math.ceil(s.done)-m.due;
+        L+=(miss<0?1.6:1)*miss*miss;}      // finishing EARLY is worse — it means we wasted pacing control
     }else{
       // probabilistic: the typical path alone hides fragile completions —
       // penalise by log P(complete) over the mission's served window
@@ -798,7 +828,7 @@ function fitDay(day,usedElsewhere){
       .filter(id=>!used.has(id)&&BYID.has(id));
     const tot=list=>planLoss(ms,list,slots)+list.reduce((a,id)=>a+penFor(id),0);
     let bestL=tot(chosen);
-    for(let sweep=0;sweep<2;sweep++){
+    for(let sweep=0;sweep<3;sweep++){
       let improved=false;
       for(let k=0;k<chosen.length;k++){
         let bestId=chosen[k],bl=bestL;
@@ -977,6 +1007,7 @@ function render(){
   document.getElementById('days').innerHTML=ST.days.map((day,di)=>{
     const s=dayStats(day);
     const slots=Math.max(1,ST.slots||3);
+    const tlDay=(day.decks||[]).length&&(day.missions||[]).length?timelineForDay(day,'per'):null;
     const rows=s.per.map((x,j)=>{
       const K=day.deckCount||3;
       const dr=dayRate(day,MI[x.m.type]);
@@ -993,7 +1024,27 @@ function render(){
         <td>${slot} ${M29[MI[x.m.type]][1]}</td>
         <td><input type="number" min="1" value="${x.m.target}" data-t="${di}:${j}"></td>
         <td><input type="number" min="1" value="${x.m.tokens}" data-k="${di}:${j}"></td>
-        <td><input type="number" min="1" max="${Math.max(day.matches||0,day.deckCount||3)}" value="${x.m.due||''}" placeholder="—" data-due="${di}:${j}" title="deck on which this mission should COMPLETE — Fit decks will pace the day so it lands there (empty = as soon as possible)"></td>
+        <td><input type="number" min="1" max="${Math.max(day.matches||0,day.deckCount||3)}" value="${x.m.due||''}" placeholder="—" data-due="${di}:${j}" title="deck on which this mission should COMPLETE — Fit decks will pace the day so it lands there (empty = as soon as possible)">${(()=>{
+          if(!x.m.due)return '';
+          const rb=rateBounds(x.m.type);
+          const serveDeck=tlDay&&tlDay.ms[j].serve!=null?Math.floor(tlDay.ms[j].serve)+1:(j<slots?1:null);
+          if(rb.top<=0||serveDeck==null)return '';
+          const need=Math.ceil(x.m.target/rb.top);
+          const earliest=serveDeck+need-1;
+          if(earliest>x.m.due)
+            return ` <span style="color:var(--lose);cursor:help" title="UNREACHABLE by d${x.m.due}: even the richest decks in the database give ~${rb.top.toFixed(2)}/match for this mission. From its typical entry (~d${serveDeck}) it needs ~${need} decks → earliest possible ≈ d${earliest}. Raise the due, lower the target, or move it earlier in the queue.">⚠ ≥d${earliest}</span>`;
+          if(rb.bottom>0.05){
+            const latest=serveDeck+Math.ceil(x.m.target/rb.bottom)-1;
+            if(latest<x.m.due)
+              return ` <span style="color:var(--gold);cursor:help" title="WILL FINISH EARLY: every deck feeds this mission (even the poorest give ~${rb.bottom.toFixed(2)}/match), so from its entry (~d${serveDeck}) it can't be stretched past ≈ d${latest}. Lower the due, raise the target, or queue it later so it enters later.">⚠ ≤d${latest}</span>`;
+          }
+          if(tlDay&&tlDay.ms[j].done!=null){
+            const dd=Math.ceil(tlDay.ms[j].done);
+            if(dd!==x.m.due)
+              return ` <span style="color:var(--gold);cursor:help" title="feasible on its own, but the fitted plan lands it on d${dd} — other due missions compete for the same decks and slots. Try spacing the dues apart, changing the queue order, or relaxing another mission's due.">→d${dd}</span>`;
+          }
+          return '';
+        })()}</td>
         <td class="dim" title="median match on which it completes, INCLUDING time waiting in the queue · ${tip}">${med==null?'—':'~'+med+'m'}${
           dr!=null&&dr/K<pool*0.6?' <span style="color:var(--lose)">▼</span>':''}</td>
         <td class="dim" title="tokens per match of effort — ${x.m.tokens} tokens ÷ ~${med==null?'∞':med} matches (queue wait included). Higher = generous, lower = grindy.">${
