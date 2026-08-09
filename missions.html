@@ -133,6 +133,7 @@
   <input type="number" id="decksPerDay" value="3" min="1" max="10">
   <button class="primary" id="fitAll">Fit decks</button>
   <button id="exportBtn">Export bundle</button>
+  <button id="shareBtn" title="Copy a link that opens this exact plan (days, targets, decks, chests)">Share link</button>
   <button id="clearAll">Clear</button>
 </div>
 <div class="err" id="err"></div>
@@ -412,15 +413,17 @@ function dayStats(day){
     tokExp:per.reduce((a,x)=>a+x.m.tokens*x.p,0),
     tokMax:per.reduce((a,x)=>a+x.m.tokens,0)};
 }
-function fitDay(day){
+function fitDay(day,usedElsewhere){
   if(!(day.missions||[]).length)return;
   const K=day.deckCount||+document.getElementById('decksPerDay').value||3;
   const pool=POOL_SAMPLE.length?POOL_SAMPLE:DECKS.slice(0,120);
+  const used=usedElsewhere||new Set(ST.days.filter(d=>d!==day)
+    .flatMap(d=>d.decks||[]).map(String));
   const chosen=[];
   for(let k=0;k<K;k++){
     let best=null,bestS=-Infinity;
     for(const d of pool){
-      if(chosen.includes(String(d.deck_id)))continue;
+      if(chosen.includes(String(d.deck_id))||used.has(String(d.deck_id)))continue;
       const trial=[...chosen,String(d.deck_id)];
       let s=0;
       for(const m of day.missions){
@@ -634,7 +637,10 @@ document.getElementById('addDay3').onclick=()=>{for(let i=0;i<3;i++)ST.days.push
 document.getElementById('clearAll').onclick=()=>{
   if(ST.days.length&&!confirm('Clear all days and chests?'))return;
   ST={days:[],chests:[],active:0};render();};
-document.getElementById('fitAll').onclick=()=>{ST.days.forEach(fitDay);render();};
+document.getElementById('fitAll').onclick=()=>{
+  const used=new Set();
+  ST.days.forEach(d=>{fitDay(d,used);(d.decks||[]).forEach(id=>used.add(String(id)));});
+  render();};
 document.getElementById('exportBtn').onclick=exportBundle;
 document.getElementById('dayChips').addEventListener('click',e=>{
   const b=e.target.closest('[data-sel]');if(b){ST.active=+b.dataset.sel;render();}});
@@ -690,6 +696,31 @@ document.getElementById('chestTbl').addEventListener('change',e=>{
   if(t.dataset.ct!=null)sorted[+t.dataset.ct].tokens=Math.max(1,+t.value||1);
   else if(t.dataset.cc!=null)sorted[+t.dataset.cc].cash=Math.max(0,+t.value||0);
   else return;render();});
+
+/* share: the whole plan rides in the URL hash */
+document.getElementById('shareBtn').onclick=async()=>{
+  const err=document.getElementById('err');err.textContent='';
+  const enc=btoa(unescape(encodeURIComponent(JSON.stringify({days:ST.days,chests:ST.chests}))))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const local=['localhost','127.0.0.1'].includes(location.hostname);
+  const url=(local?'https://gilmisgav.github.io/deck-room/':location.origin+location.pathname.replace(/[^/]*$/,''))
+    +'missions.html#s='+enc;
+  try{await navigator.clipboard.writeText(url);
+    err.innerHTML='<span class="ok">plan link copied'+(local?' (points to the online copy)':'')+'</span>';
+  }catch(e){prompt('Copy the plan link:',url);}
+};
+(function(){  // load a shared plan
+  const m=location.hash.match(/#s=([A-Za-z0-9\-_]+)/);
+  if(!m)return;
+  try{
+    const p=JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g,'+').replace(/_/g,'/')))));
+    if(Array.isArray(p.days)&&(!ST.days.length||!ST.days.some(d=>(d.missions||[]).length)
+      ||confirm(`Load the shared plan (${p.days.length} days)? It replaces your current one.`))){
+      ST={days:p.days,chests:p.chests||[],active:0};save();
+    }
+    history.replaceState(null,'',location.pathname);
+  }catch(e){}
+})();
 
 /* boot */
 poolRates();   // warm the sample once (~1s)
