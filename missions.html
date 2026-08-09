@@ -85,6 +85,16 @@
   .x:hover{color:var(--lose)}
   .dim{color:var(--muted)}
   .decks{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px}
+  .plan{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px;overflow-x:auto}
+  .plan .cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--muted);margin-bottom:6px}
+  .plan th,.plan td{text-align:left;padding:5px 8px}
+  .mb{position:relative;min-width:88px;height:17px;background:var(--inset);
+    border:1px solid var(--line);border-radius:4px;overflow:hidden}
+  .mb i{position:absolute;top:0;bottom:0;left:0;opacity:.85}
+  .mb.g i{background:var(--win)}.mb.m i{background:var(--gold)}.mb.r i{background:var(--lose);opacity:.55}
+  .mb b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:9.5px;font-weight:700;color:var(--text);text-shadow:0 1px 2px rgba(0,0,0,.55)}
 
   /* chest bar */
   .metabar{position:relative;height:100px;margin:8px 0 2px;padding:0 26px}
@@ -489,6 +499,30 @@ const daySig=day=>(day.missions||[]).map(m=>m.type+':'+m.target).join('|')
 /* ═══════════════ render ═══════════════ */
 const pcls=p=>p>=0.7?'pg':p>=0.35?'pm':'pr';
 const ptx=p=>(100*p).toFixed(0)+'%';
+function deckPlanHTML(day){                // deck list, played in order, with cumulative mission progress
+  const ids=(day.decks||[]).map(String);
+  if(!ids.length)return `<div class="decks">no decks yet — set "finish in" and press Fit decks</div>`;
+  const ms=day.missions||[];
+  if(!ms.length)return `<div class="decks">decks: ${ids.join(' · ')}</div>`;
+  const rates=ids.map(id=>{const d=BYID.get(id);
+    return ms.map(m=>d?deckRates(d,30)[MI[m.type]]:0);});
+  const cum=ms.map(()=>0);
+  const rows=ids.map((id,k)=>{
+    ms.forEach((_,j)=>cum[j]+=rates[k][j]);
+    const cells=ms.map((m,j)=>{
+      const p=poisAtLeast(cum[j],m.target);
+      const w=Math.min(100,100*cum[j]/m.target);
+      return `<td title="after deck ${k+1}: expected ${cum[j].toFixed(2)} of ${m.target} · P(done) ${ptx(p)} · this deck adds ${rates[k][j].toFixed(2)}">
+        <div class="mb ${p>=0.7?'g':p>=0.35?'m':'r'}"><i style="width:${w}%"></i><b>${cum[j].toFixed(1)} / ${m.target}</b></div></td>`;});
+    const all=ms.reduce((a,m,j)=>a*poisAtLeast(cum[j],m.target),1);
+    return `<tr><td class="dim">${k+1}</td><td>${id}</td>${cells}
+      <td><span class="pb ${pcls(all)}">${ptx(all)}</span></td></tr>`;}).join('');
+  return `<div class="plan"><div class="cap">Deck plan · cumulative progress</div>
+    <table><thead><tr><th>#</th><th>Deck</th>
+    ${ms.map(m=>`<th>${M29[MI[m.type]][1]} ×${m.target}</th>`).join('')}
+    <th title="chance every mission is complete by the end of this deck">Day done</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
 function render(){
   const R=poolRates();
   // day chips
@@ -537,7 +571,7 @@ function render(){
     return `<div class="day ${di===ST.active?'active':''}">
       <div class="dhead">
         <span class="dtag">DAY ${di+1}</span>
-        <span class="lbl">decks</span><input type="number" min="1" max="10" value="${day.deckCount||3}" data-dc="${di}">
+        <span class="lbl" title="the day is designed to be completed within this many decks">finish in</span><input type="number" min="1" max="10" value="${day.deckCount||3}" data-dc="${di}"><span class="lbl">decks</span>
         <span class="lbl">all missions</span><span class="pb ${pcls(s.all)}">${ptx(s.all)}</span>
         ${(day.decks||[]).length&&day.fitSig!==daySig(day)
           ?`<button class="pb pr" style="border:none;cursor:pointer" data-refit="${di}"
@@ -555,7 +589,7 @@ function render(){
         <th title="median matches to complete at this target">~Matches</th><th>P</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table>`
         :`<div class="dim" style="font-size:12px;padding:4px 0">empty — click missions in the bank</div>`}
-      <div class="decks">decks: ${(day.decks||[]).length?day.decks.join(' · '):'not fitted'}</div>
+      ${deckPlanHTML(day)}
     </div>`;}).join('');
   renderChests();
   renderCurves();
