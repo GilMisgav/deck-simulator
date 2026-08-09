@@ -103,6 +103,13 @@
   .dmk::before{content:"";position:absolute;left:50%;top:-6px;width:1px;height:6px;background:var(--line2)}
 
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  /* schedule gantt */
+  .gday{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;margin-bottom:14px}
+  .gtitle{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}
+  .gtitle .dt{font-family:var(--serif);font-style:italic;font-size:17px}
+  .gtitle .sub{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .contrib td:first-child{color:var(--gold)}
   .note{font-size:11.5px;color:var(--muted);margin:6px 0 0;line-height:1.5}
   svg{width:100%;height:auto;display:block}
   .legend{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:10.5px;
@@ -125,6 +132,12 @@
   </div>
 </header>
 
+<div class="bar" style="margin-top:14px;border-bottom:1px solid var(--line);padding-bottom:12px">
+  <button class="primary" id="tabStudio">Studio</button>
+  <button id="tabSched" title="Per-day timeline: which decks are served, when each mission enters and when it should be done">Daily schedule</button>
+</div>
+
+<div id="vStudio">
 <div class="bar">
   <span class="lbl">Days</span>
   <span id="dayChips" style="display:flex;gap:6px;flex-wrap:wrap"></span>
@@ -159,6 +172,23 @@
 
 <h2>Completion curves <small>P(mission done) vs matches played — selected day</small></h2>
 <div class="panel" id="curves"></div>
+</div><!-- /vStudio -->
+
+<div id="vSched" style="display:none">
+  <div class="bar">
+    <span class="lbl">Mode</span>
+    <button class="primary" id="mPersonal" title="Scripted first days — the exact fitted decks, in serve order">Personal · fitted decks</button>
+    <button id="mCalendric" title="After the first days — calendar missions sized on pool expectations (any deck the player gets)">Calendric · pool expectations</button>
+    <span id="calCtl" style="display:none;gap:8px;align-items:center">
+      <span class="lbl">start</span><input type="date" id="calStart"
+        style="background:var(--inset);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 7px;font-family:var(--mono);font-size:12px">
+      <span class="lbl">matches / day</span><input type="number" id="calMpd" value="3" min="1" max="20">
+      <button id="exportCal" title="Export these days as a calendric bundle (no fitted decks — pool-expectation targets)">Export calendric bundle</button>
+    </span>
+  </div>
+  <p class="note" style="margin-bottom:12px">▸ = mission enters the visible slots (3 at a time — the next one appears when one completes) · bar ends where the expected events reach the target · red edge = not expected to finish that day. Personal mode plays the fitted decks in order; calendric sizes everything on the pool average.</p>
+  <div id="schedDays"></div>
+</div>
 
 <footer>
   MISSION STUDIO · 29-type bank per Side Bets–Missions PRD (type strings enforced by validate_bundle.py) ·
@@ -696,6 +726,166 @@ document.getElementById('chestTbl').addEventListener('change',e=>{
   if(t.dataset.ct!=null)sorted[+t.dataset.ct].tokens=Math.max(1,+t.value||1);
   else if(t.dataset.cc!=null)sorted[+t.dataset.cc].cash=Math.max(0,+t.value||0);
   else return;render();});
+
+/* ═══════════════ daily schedule ═══════════════ */
+let SCHED_MODE='personal';
+// expected-progress timeline: 3 visible slots; a queued mission enters when one
+// completes; each mission's clock runs only while visible. Time unit = matches.
+function timelineForDay(day,mode,mpd){
+  const R=poolRates();
+  const K=mode==='cal'?mpd:((day.decks||[]).length||day.deckCount||3);
+  const rateAt=(mi,m)=>{
+    if(mode==='cal')return R[mi];
+    const id=(day.decks||[])[m],d=id&&BYID.get(String(id));
+    return d?deckRates(d,30)[mi]:R[mi];
+  };
+  const ms=(day.missions||[]).map((m,idx)=>({idx,type:m.type,target:m.target,
+    tokens:m.tokens,progress:0,serve:null,done:null}));
+  const queue=ms.map(x=>x.idx);const vis=[];
+  const serveNext=t=>{while(vis.length<3&&queue.length){
+    const i=queue.shift();ms[i].serve=t;vis.push(i);}};
+  let t=0;serveNext(0);
+  let guard=0;
+  while(t<K&&vis.length&&guard++<500){
+    const m=Math.floor(t),boundary=Math.min(m+1,K);
+    let best=null,bestT=Infinity;
+    for(const i of vis){
+      const r=rateAt(MI[ms[i].type],m);
+      if(r<=1e-9)continue;
+      const tc=t+(ms[i].target-ms[i].progress)/r;
+      if(tc<bestT){bestT=tc;best=i;}
+    }
+    if(best==null||bestT>boundary){
+      for(const i of vis)ms[i].progress+=rateAt(MI[ms[i].type],m)*(boundary-t);
+      t=boundary;continue;
+    }
+    for(const i of vis)ms[i].progress+=rateAt(MI[ms[i].type],m)*(bestT-t);
+    t=bestT;ms[best].done=t;vis.splice(vis.indexOf(best),1);serveNext(t);
+  }
+  return {K,ms};
+}
+function ganttSVG(tl,day,mode){
+  const COLS=['#C9A55C','#5BB98A','#7FB3D5','#C77B1D','#B08BC9'];
+  const w=680,rowH=26,pt=22,pl=170,pr=14,h=pt+tl.ms.length*rowH+26;
+  const X=t=>pl+(t/tl.K)*(w-pl-pr);
+  let g='';
+  // deck boundaries + labels
+  for(let m=0;m<tl.K;m++){
+    g+=`<line x1="${X(m)}" x2="${X(m)}" y1="${pt-6}" y2="${h-20}" stroke="#22302B"/>`;
+    const lbl=mode==='cal'?('m'+(m+1)):('…'+String((day.decks||[])[m]||'?').slice(-4));
+    g+=`<text x="${(X(m)+X(m+1))/2}" y="${pt-9}" text-anchor="middle" font-size="9" fill="#8B9A93" font-family="IBM Plex Mono">${lbl}</text>`;
+  }
+  g+=`<line x1="${X(tl.K)}" x2="${X(tl.K)}" y1="${pt-6}" y2="${h-20}" stroke="#2E4038"/>`;
+  tl.ms.forEach((m,r)=>{
+    const y=pt+r*rowH+6,c=COLS[r%COLS.length];
+    const nm=M29[MI[m.type]][1];
+    g+=`<text x="${pl-8}" y="${y+10}" text-anchor="end" font-size="10.5" fill="#E4E9E5" font-family="IBM Plex Mono">${nm} ×${m.target}</text>`;
+    if(m.serve==null){
+      g+=`<text x="${pl+4}" y="${y+10}" font-size="9" fill="#8B9A93" font-family="IBM Plex Mono">never served</text>`;return;}
+    const x0=X(m.serve),x1=X(m.done!=null?m.done:tl.K);
+    g+=`<path d="M${x0} ${y-3} l0 20" stroke="${c}" stroke-width="2"/>`;   // serve marker
+    g+=`<rect x="${x0}" y="${y}" width="${Math.max(2,x1-x0)}" height="13" rx="4" fill="${c}" opacity="${m.done!=null?'0.85':'0.35'}"/>`;
+    if(m.done!=null)
+      g+=`<text x="${Math.min(x1+5,w-pr-30)}" y="${y+10}" font-size="9" fill="${c}" font-family="IBM Plex Mono">✓ m${m.done.toFixed(1)}</text>`;
+    else
+      g+=`<rect x="${X(tl.K)-3}" y="${y}" width="3" height="13" fill="#C75950"/>
+          <text x="${X(tl.K)+5}" y="${y+10}" font-size="9" fill="#C75950" font-family="IBM Plex Mono">${(100*Math.min(1,m.progress/m.target)).toFixed(0)}%</text>`;
+  });
+  g+=`<text x="${pl}" y="${h-6}" font-size="9" fill="#8B9A93" font-family="IBM Plex Mono">match →</text>`;
+  return `<svg viewBox="0 0 ${w} ${h}">${g}</svg>`;
+}
+function renderSchedule(){
+  const el=document.getElementById('schedDays');
+  const mode=SCHED_MODE==='calendric'?'cal':'per';
+  document.getElementById('calCtl').style.display=mode==='cal'?'inline-flex':'none';
+  const mpd=Math.max(1,+document.getElementById('calMpd').value||3);
+  const start=document.getElementById('calStart').value;
+  if(!ST.days.length){el.innerHTML='<div class="dim" style="font-size:12px">no days in the plan</div>';return;}
+  el.innerHTML=ST.days.map((day,i)=>{
+    const tl=timelineForDay(day,mode,mpd);
+    const doneN=tl.ms.filter(m=>m.done!=null).length;
+    let dateTxt='';
+    if(mode==='cal'&&start){
+      const d=new Date(start);d.setDate(d.getDate()+i);
+      dateTxt=d.toISOString().slice(0,10)+' · ';
+    }
+    // deck contribution table (personal only)
+    let contrib='';
+    if(mode==='per'&&(day.decks||[]).length){
+      const heads=day.missions.map(m=>`<th title="${m.type}">${M29[MI[m.type]][1].split(' ')[0]} ×${m.target}</th>`).join('');
+      const rows=day.decks.map((id,k)=>{
+        const d=BYID.get(String(id));const r=d?deckRates(d,30):null;
+        return `<tr><td>#${k+1} · ${id}</td>${day.missions.map(m=>
+          `<td>${r?r[MI[m.type]].toFixed(2):'—'}</td>`).join('')}</tr>`;}).join('');
+      const tot=`<tr><td class="dim">Σ expected / day</td>${day.missions.map(m=>{
+        const s=day.decks.reduce((a,id)=>{const d=BYID.get(String(id));
+          return a+(d?deckRates(d,30)[MI[m.type]]:0);},0);
+        return `<td><b style="color:${s>=m.target?'var(--win)':'var(--lose)'}">${s.toFixed(2)}</b></td>`;}).join('')}</tr>`;
+      contrib=`<table class="contrib" style="margin-top:10px;max-width:680px"><thead>
+        <tr><th>Deck (serve order)</th>${heads}</tr></thead><tbody>${rows}${tot}</tbody></table>`;
+    }
+    return `<div class="gday">
+      <div class="gtitle"><span class="dt">Day ${i+1}</span>
+        <span class="sub">${dateTxt}${mode==='cal'?mpd+' expected matches':'decks: '+(day.decks||[]).join(' · ')||'not fitted'}</span>
+        <span class="sub" style="margin-left:auto">${doneN}/${tl.ms.length} missions expected done</span></div>
+      ${ganttSVG(tl,day,mode)}${contrib}</div>`;
+  }).join('');
+}
+function exportCalendric(){
+  const err=document.getElementById('err');err.textContent='';
+  const caps=ST.days.map(d=>(d.missions||[]).length),cap=caps[0];
+  if(!cap||caps.some(c=>c!==cap)){err.textContent='Every day needs the same mission count.';return;}
+  if(!(ST.chests.length>=2&&ST.chests.length<=5)){err.textContent='Progression needs 2–5 chests.';return;}
+  const chains={},rotation=[];
+  for(const day of ST.days){
+    const ms=day.missions.map((m,i)=>({index:i+1,type:m.type,target:m.target,
+      reward:{mission_token:m.tokens}}));
+    const comp=compId(ms);const uid='chn.'+comp;
+    ms.forEach(m=>{const o={missionUid:`msn.${comp}.${m.type}`,index:m.index,type:m.type,
+      target:m.target,reward:m.reward};Object.keys(m).forEach(k=>delete m[k]);Object.assign(m,o);});
+    if(!chains[uid])chains[uid]={chainUid:uid,label:'Day '+(rotation.length+1),missions:ms};
+    rotation.push(uid);
+  }
+  const slug='studio_cal';
+  const tiers=[...ST.chests].sort((a,b)=>a.tokens-b.tokens).map((c,i)=>({
+    tierUid:`tier.${slug}.${i+1}`,tokensRequired:c.tokens,reward:{bonusCash:+(+c.cash).toFixed(2)}}));
+  const today=new Date();
+  const ymd=today.getFullYear()+String(today.getMonth()+1).padStart(2,'0')+String(today.getDate()).padStart(2,'0');
+  const bundle={version:4,bundleUid:`bnd.calendric.${ymd}.01`,bundleType:'calendric',
+    segments:[{segmentUid:'seg_all',label:'All players',priority:1,
+      configUid:`cfg.calendric.${slug}`,condition:'matches_total >= 1'}],
+    configs:{[`cfg.calendric.${slug}`]:{
+      configUid:`cfg.calendric.${slug}`,configType:'scripted',
+      prorationCalendricFirstExposure:{enabled:true,minReward:{bonusCash:0.10}},
+      dailyMissions:{visibleSlots:Math.min(3,cap),dailyCap:cap},
+      rotation,chains,
+      progression:{numberOfDays:ST.days.length,tiers}}}};
+  const blob=new Blob([JSON.stringify(bundle,null,2)+'\n'],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`bundle_${ymd}_studio_cal.json`;a.click();URL.revokeObjectURL(a.href);
+  err.innerHTML='<span class="ok">Calendric bundle exported — dates/day-boundary are set in backoffice.</span>';
+}
+/* tabs + schedule wiring */
+function showTab(which){
+  document.getElementById('vStudio').style.display=which==='studio'?'':'none';
+  document.getElementById('vSched').style.display=which==='sched'?'':'none';
+  document.getElementById('tabStudio').classList.toggle('primary',which==='studio');
+  document.getElementById('tabSched').classList.toggle('primary',which==='sched');
+  if(which==='sched')renderSchedule();
+}
+document.getElementById('tabStudio').onclick=()=>showTab('studio');
+document.getElementById('tabSched').onclick=()=>showTab('sched');
+document.getElementById('mPersonal').onclick=()=>{SCHED_MODE='personal';
+  document.getElementById('mPersonal').classList.add('primary');
+  document.getElementById('mCalendric').classList.remove('primary');renderSchedule();};
+document.getElementById('mCalendric').onclick=()=>{SCHED_MODE='calendric';
+  document.getElementById('mCalendric').classList.add('primary');
+  document.getElementById('mPersonal').classList.remove('primary');renderSchedule();};
+document.getElementById('calMpd').addEventListener('change',renderSchedule);
+document.getElementById('calStart').addEventListener('change',renderSchedule);
+document.getElementById('exportCal').onclick=exportCalendric;
+(()=>{const d=new Date();d.setDate(d.getDate()+1);
+  document.getElementById('calStart').value=d.toISOString().slice(0,10);})();
 
 /* share: the whole plan rides in the URL hash */
 document.getElementById('shareBtn').onclick=async()=>{
