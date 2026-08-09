@@ -504,10 +504,14 @@ function funScore(k){
   const actionComp=Math.min(1,(k.dblPerM+k.splitPerM)/2);
   return Math.round(100*(0.45*winComp+0.35*eventComp+0.20*actionComp));
 }
-// effective fun: a manual per-deck override (ST.funOverrides) beats the computed score
+// effective fun / RTP: manual per-deck overrides beat the computed values
 const funOf=d=>{
   const o=ST.funOverrides&&ST.funOverrides[String(d.deck_id)];
   return o!=null?o:funScore(deckKPIs(d,30));
+};
+const rtpOf=d=>{
+  const o=ST.rtpOverrides&&ST.rtpOverrides[String(d.deck_id)];
+  return o!=null?o:deckKPIs(d,30).rtp;
 };
 const rtpColor=v=>v<=0.97?'var(--win)':v<=1.02?'var(--gold)':'var(--lose)';
 // $ value of one mission token, implied by the chest path (total cash ÷ last threshold)
@@ -702,7 +706,7 @@ function constraintPenFn(day){
   const rlo=day.rtpMin??null,rhi=day.rtpMax??null;
   if(lo==null&&hi==null&&rlo==null&&rhi==null)return null;
   return d=>{
-    const f=funOf(d),v=deckKPIs(d,30).rtp;
+    const f=funOf(d),v=rtpOf(d);
     const fd=Math.max(lo!=null?lo-f:0,hi!=null?f-hi:0,0);
     const rd=Math.max(rlo!=null?rlo-v:0,rhi!=null?v-rhi:0,0);
     return 0.03*fd*fd+400*rd*rd;
@@ -720,7 +724,7 @@ function fitDay(day,usedElsewhere){
   const funB=lo!=null||hi!=null,rtpB=rlo!=null||rhi!=null;
   const fdist=d=>{const s=funOf(d);
     return Math.max(lo!=null?lo-s:0,hi!=null?s-hi:0,0);};
-  const rdist=d=>{const v=deckKPIs(d,30).rtp;
+  const rdist=d=>{const v=rtpOf(d);
     return Math.max(rlo!=null?rlo-v:0,rhi!=null?v-rhi:0,0);};
   let funPenalty=null,rtpPenalty=null;
   if(funB||rtpB){
@@ -811,12 +815,14 @@ const daySig=day=>(day.missions||[]).map(m=>m.type+':'+m.target+':'+(m.due||0)).
   +'#'+(day.deckCount||3)+'@'+SUIT_MODEL+'&'+(ST.slots||3)
   +'£'+(day.funMin??'')+'-'+(day.funMax??'')
   +'₪'+(day.rtpMin??'')+'-'+(day.rtpMax??'')
-  +'¤'+Object.entries(ST.funOverrides||{}).map(([k,v])=>k+':'+v).join(','); // queue order, fun/rtp ranges and overrides all shape the fit
+  +'¤'+Object.entries(ST.funOverrides||{}).map(([k,v])=>k+':'+v).join(',')
+  +'®'+Object.entries(ST.rtpOverrides||{}).map(([k,v])=>k+':'+v).join(','); // queue order, fun/rtp ranges and overrides all shape the fit
 
 /* ═══════════════ render ═══════════════ */
 const pcls=p=>p>=0.7?'pg':p>=0.35?'pm':'pr';
 const ptx=p=>(100*p).toFixed(0)+'%';
 let INSP=null;                             // open deck inspector: 'di:k' or null
+let SWAPMSG=null;                          // {key:'di:k', ok, text} — result of the last Replace deck
 function inspectorHTML(day,di,k,cols){     // KPI drill-down for the deck at position k
   const id=String((day.decks||[])[k]),d=BYID.get(id);
   if(!d)return '';
@@ -841,8 +847,13 @@ function inspectorHTML(day,di,k,cols){     // KPI drill-down for the deck at pos
          <input type="number" min="0" max="100" value="${ovv??''}" placeholder="${funComp}" data-funov="${id}"
            style="width:52px;margin-left:6px" title="type a value to override this deck's fun score everywhere (fit, plan, ranges) — blank = back to the computed ${funComp}">`,
         'computed '+funComp+' — near-even win feel + surprise events + agency. The override wins wherever fun is used.')}
-      ${chip('RTP',`<span style="color:${rtpColor(kp.rtp)}">${kp.rtp.toFixed(2)}</span>`,
-        'return to player: money returned ÷ money wagered on this deck (flat-100 reasonable play, natural ±flat included)')}
+      ${(()=>{const rov=ST.rtpOverrides?ST.rtpOverrides[id]:null;
+        const rtpEff=rov!=null?rov:kp.rtp;
+        return chip('RTP'+(rov!=null?' *manual':''),
+        `<span style="color:${rtpColor(rtpEff)}">${rtpEff.toFixed(2)}</span>
+         <input type="number" min="0" max="3" step="0.01" value="${rov??''}" placeholder="${kp.rtp.toFixed(2)}" data-rtpov="${id}"
+           style="width:60px;margin-left:6px" title="type a value to override this deck's RTP everywhere (fit ranges, plan, cumulative) — blank = back to the computed ${kp.rtp.toFixed(2)}">`,
+        'computed '+kp.rtp.toFixed(2)+' — money returned ÷ money wagered. The override wins wherever RTP is used.');})()}
       ${chip('Win ratio',kp.ratio.toFixed(2),'player hand wins ÷ losses (busts included)')}
       ${chip('W / P / L',`${(100*kp.winPct).toFixed(0)}·${(100*kp.pushPct).toFixed(0)}·${(100*kp.losePct).toFixed(0)}%`,'share of hands won / pushed / lost')}
       ${chip('Rounds',kp.rounds.toFixed(1)+'/match','rounds played per match')}
@@ -855,6 +866,10 @@ function inspectorHTML(day,di,k,cols){     // KPI drill-down for the deck at pos
         <button data-play1="${id}" title="open just this deck in Deck Room">Play ↗</button>
       </span>
     </div>
+    ${SWAPMSG&&SWAPMSG.key===di+':'+k?`<div style="margin-top:10px;padding:7px 10px;border-radius:8px;font-size:12px;
+      background:${SWAPMSG.ok?'rgba(91,185,138,.12)':'rgba(199,89,80,.12)'};
+      border:1px solid ${SWAPMSG.ok?'var(--win)':'var(--lose)'};
+      color:${SWAPMSG.ok?'var(--win)':'var(--lose)'}">${SWAPMSG.ok?'✓ ':''}${SWAPMSG.text}</div>`:''}
     <div class="cap" style="margin:12px 0 4px">QA per event — this deck vs pool average</div>
     <table style="max-width:560px"><thead><tr><th>Mission</th><th>This deck</th><th>Pool</th><th>Rel.</th></tr></thead>
     <tbody>${qa}</tbody></table>
@@ -885,8 +900,11 @@ function deckPlanHTML(day,di){             // deck list, played in order, with s
     const typTok=ms.reduce((a,m,j)=>a+(tl.ms[j].done!=null&&tl.ms[j].done<=k+1?m.tokens:0),0);
     const expTok=ms.reduce((a,m,j)=>a+m.tokens*sim.doneByMatch[j][k],0);
     const margTok=expTok-prevExpTok;prevExpTok=expTok;
-    const rtpB=kp?kp.rtp+margTok*tokVal/stake:null;
-    cumDeb+=kp?kp.debM:avgDeb;cumCred+=kp?kp.credM:avgCred;
+    const rov=dk&&ST.rtpOverrides?ST.rtpOverrides[ids[k]]:null;
+    const rtpEff=dk?rtpOf(dk):null;
+    const rtpB=kp?rtpEff+margTok*tokVal/stake:null;
+    cumDeb+=kp?kp.debM:avgDeb;
+    cumCred+=kp?(rov!=null?kp.debM*rov:kp.credM):avgCred;
     const cumRtp=cumDeb>0?cumCred/cumDeb:null;
     const cumB=cumRtp!=null?cumRtp+expTok*tokVal/(stake*(k+1)):null;
     const cells=ms.map((m,j)=>{
@@ -906,9 +924,9 @@ function deckPlanHTML(day,di){             // deck list, played in order, with s
     return `<tr${real?` class="drow${open?' on':''}" data-insp="${di}:${k}" title="click for deck KPIs — fun, win ratio, events"`:''}>
       <td class="dim">${k+1}</td><td>${id}</td>
       <td${ov?' title="manual fun override — open the inspector to change or clear it"':''}>${fun==null?'<span class="dim">—</span>':`<span class="pb ${fun>=70?'pg':fun>=45?'pm':'pr'}">${fun}${ov?'*':''}</span>`}</td>
-      <td>${kp?`<b style="font-family:var(--mono);color:${rtpColor(kp.rtp)}" title="return to player on this deck: money returned ÷ money wagered (flat-100 reasonable play, natural ±flat included)">${kp.rtp.toFixed(2)}</b>`:'<span class="dim">—</span>'}</td>
+      <td${rov!=null?' title="manual RTP override — open the inspector to change or clear it"':''}>${kp?`<b style="font-family:var(--mono);color:${rtpColor(rtpEff)}" title="return to player on this deck: money returned ÷ money wagered (flat-100 reasonable play, natural ±flat included)${rov!=null?' — manual override, computed '+kp.rtp.toFixed(2):''}">${rtpEff.toFixed(2)}${rov!=null?'*':''}</b>`:'<span class="dim">—</span>'}</td>
       <td>${cumRtp!=null?`<b style="font-family:var(--mono);color:${rtpColor(cumRtp)}" title="cumulative RTP over decks 1–${k+1}: total money returned ÷ total wagered so far${kp?'':' (pool decks counted at the day average)'} · incl. mission bonuses: ${cumB.toFixed(2)}">${cumRtp.toFixed(2)}</b>`:'<span class="dim">—</span>'}</td>
-      <td>${rtpB!=null?`<b style="font-family:var(--mono);color:${rtpColor(rtpB)}" title="effective RTP incl. mission bonuses: game ${kp.rtp.toFixed(2)} + ${margTok.toFixed(1)} expected tokens on this deck × $${tokVal.toFixed(3)}/token ÷ $${stake} stake${tokVal>0?'':' — add chests to give tokens a $ value'}">${rtpB.toFixed(2)}</b>`:'<span class="dim">—</span>'}</td>
+      <td>${rtpB!=null?`<b style="font-family:var(--mono);color:${rtpColor(rtpB)}" title="effective RTP incl. mission bonuses: game ${rtpEff.toFixed(2)} + ${margTok.toFixed(1)} expected tokens on this deck × $${tokVal.toFixed(3)}/token ÷ $${stake} stake${tokVal>0?'':' — add chests to give tokens a $ value'}">${rtpB.toFixed(2)}</b>`:'<span class="dim">—</span>'}</td>
       ${cells}
       <td title="tokens collected on the typical path · sim expectation: ~${expTok.toFixed(1)}"
         style="font-family:var(--mono)"><b style="color:var(--gold)">${typTok}</b></td>
@@ -995,7 +1013,7 @@ function render(){
           title="expected tokens / max tokens · per deck = expected ÷ ${day.deckCount||3} decks">
           <b style="color:var(--gold)">${s.tokExp.toFixed(0)}</b> / ${s.tokMax}
           <span class="dim">· ${(s.tokExp/(day.deckCount||3)).toFixed(1)}/deck</span></span>
-        ${(()=>{const rs=(day.decks||[]).map(x=>BYID.get(String(x))).filter(Boolean).map(x=>deckKPIs(x,30).rtp);
+        ${(()=>{const rs=(day.decks||[]).map(x=>BYID.get(String(x))).filter(Boolean).map(x=>rtpOf(x));
           if(!rs.length)return '';
           const avg=rs.reduce((a,b)=>a+b,0)/rs.length;
           const avgB=avg+s.tokExp*chestTokenValue()/((day.deckCount||3)*(ST.stake||1));
@@ -1289,7 +1307,7 @@ document.getElementById('days').addEventListener('click',e=>{
   if(!b){
     if(e.target.closest('input,select,a'))return;
     const row=e.target.closest('[data-insp]');
-    if(row){INSP=INSP===row.dataset.insp?null:row.dataset.insp;render();}
+    if(row){INSP=INSP===row.dataset.insp?null:row.dataset.insp;SWAPMSG=null;render();}
     return;
   }
   const d=b.dataset;
@@ -1299,30 +1317,38 @@ document.getElementById('days').addEventListener('click',e=>{
     window.open('index.html#j='+enc,'_blank');return;
   }
   if(d.swap!=null){
+    if(b.disabled)return;
+    b.disabled=true;b.textContent='Searching…';   // paint feedback BEFORE the heavy search
     const [di,k]=d.swap.split(':').map(Number);
-    const day=ST.days[di],ms=day.missions||[];
-    const slots=Math.max(1,ST.slots||3);
-    const used=new Set(ST.days.filter(x=>x!==day).flatMap(x=>x.decks||[]).map(String));
-    const pen=constraintPenFn(day),penOf=new Map();
-    const penFor=id=>{if(!pen)return 0;
-      if(!penOf.has(id))penOf.set(id,pen(BYID.get(id))||0);
-      return penOf.get(id);};
-    const tot=list=>planLoss(ms,list,slots)+list.reduce((a,id)=>a+penFor(id),0);
-    const cur=String(day.decks[k]);
-    let bestId=cur,bestL=tot(day.decks.map(String));
-    for(const cd of fitCandidates(day)){
-      const id=String(cd.deck_id);
-      if(id===cur||used.has(id)||day.decks.map(String).includes(id))continue;
-      const trial=day.decks.map(String);trial[k]=id;
-      const L=tot(trial);
-      if(L<bestL-1e-9){bestL=L;bestId=id;}
-    }
-    if(bestId===cur){
-      document.getElementById('err').textContent='This deck is already the best available for position '+(k+1)+' under the current constraints.';
-    }else{
-      day.decks[k]=bestId;day.fitSig=daySig(day);INSP=di+':'+k;
-    }
-    render();return;
+    setTimeout(()=>{
+      const day=ST.days[di],ms=day.missions||[];
+      const slots=Math.max(1,ST.slots||3);
+      const used=new Set(ST.days.filter(x=>x!==day).flatMap(x=>x.decks||[]).map(String));
+      const pen=constraintPenFn(day),penOf=new Map();
+      const penFor=id=>{if(!pen)return 0;
+        if(!penOf.has(id))penOf.set(id,pen(BYID.get(id))||0);
+        return penOf.get(id);};
+      const tot=list=>planLoss(ms,list,slots)+list.reduce((a,id)=>a+penFor(id),0);
+      const cur=String(day.decks[k]);
+      let bestId=cur,bestL=tot(day.decks.map(String));
+      for(const cd of fitCandidates(day)){
+        const id=String(cd.deck_id);
+        if(id===cur||used.has(id)||day.decks.map(String).includes(id))continue;
+        const trial=day.decks.map(String);trial[k]=id;
+        const L=tot(trial);
+        if(L<bestL-1e-9){bestL=L;bestId=id;}
+      }
+      INSP=di+':'+k;
+      if(bestId===cur){
+        SWAPMSG={key:INSP,ok:false,
+          text:'No better deck found — this one is already the best available for position '+(k+1)+' under the current constraints (fun/RTP ranges, dues, decks used elsewhere).'};
+      }else{
+        day.decks[k]=bestId;day.fitSig=daySig(day);
+        SWAPMSG={key:INSP,ok:true,text:'Replaced '+cur+' → '+bestId+'. All numbers below are updated.'};
+      }
+      render();
+    },30);
+    return;
   }
   if(d.addday!=null){ST.days.push(newDay());ST.active=ST.days.length-1;render();return;}
   if(d.refit!=null){const i=+d.refit;
@@ -1363,6 +1389,9 @@ document.getElementById('days').addEventListener('change',e=>{
   else if(d.funov!=null){const v=t.value===''?null:Math.max(0,Math.min(100,+t.value));
     ST.funOverrides=ST.funOverrides||{};
     if(v==null)delete ST.funOverrides[d.funov];else ST.funOverrides[d.funov]=v;}
+  else if(d.rtpov!=null){const v=t.value===''?null:Math.max(0,Math.min(3,+t.value));
+    ST.rtpOverrides=ST.rtpOverrides||{};
+    if(v==null)delete ST.rtpOverrides[d.rtpov];else ST.rtpOverrides[d.rtpov]=v;}
   else return;
   render();});
 document.getElementById('chestAdd').onclick=()=>{
