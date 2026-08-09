@@ -1122,9 +1122,9 @@ function renderChests(){
   for(let i=1;i<chests.length;i++)          // keep auto thresholds strictly increasing (rule: 2–5 ascending)
     if(chests[i].tokens<=chests[i-1].tokens&&(chests[i].by==='day'||chests[i].by==='match'))
       chests[i].tokens=chests[i-1].tokens+1;
-  // the bar ends at the plan's definition — the last chest or the expected
-  // total, whichever is larger (the theoretical max stays in the text line)
-  const scale=Math.max(chests.length?chests[chests.length-1].tokens:0,a,1)*1.03;
+  // the bar IS the chest requirement: it ends exactly at the last chest.
+  // Anything collected beyond it just clamps at 100%.
+  const scale=chests.length?chests[chests.length-1].tokens:Math.max(a,1);
   const pct=v=>Math.max(0,Math.min(100,100*v/scale));
   document.getElementById('tokInfo').textContent=ST.days.length
     ?`expected ${Math.round(a)} · max ${mx} tokens over ${ST.days.length} days`:'add days first';
