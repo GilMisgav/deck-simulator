@@ -1858,8 +1858,30 @@ function renderLive(){
 }
 
 /* boot */
+// the 3-day plan delivered as bundle_20260809_studio.json — the default
+// experience anyone sees before saving a plan of their own
+const DEFAULT_PLAN={
+  days:[
+    {missions:[{type:'open_same_color',target:8,tokens:5},{type:'plus3_pair',target:2,tokens:10},
+      {type:'dealer_bust',target:3,tokens:5},{type:'open_any_pair',target:1,tokens:10},
+      {type:'reach_21',target:1,tokens:10}],deckCount:3,
+      decks:['3851381817457474','2926297518384303','1468711910297569']},
+    {missions:[{type:'open_colored_pair',target:1,tokens:10},{type:'open_hard_20',target:2,tokens:10},
+      {type:'win_after_double',target:1,tokens:10},{type:'plus3_straight',target:1,tokens:10},
+      {type:'open_blackjack',target:1,tokens:10}],deckCount:3,
+      decks:['2461249552247070','4077897782262681','2595943150577021']},
+    {missions:[{type:'open_start_11',target:1,tokens:10},{type:'open_mixed_pair',target:1,tokens:10},
+      {type:'win_split_hand',target:1,tokens:20},{type:'win_5plus_cards',target:1,tokens:20},
+      {type:'dealer_bust_5plus',target:1,tokens:20}],deckCount:3,
+      decks:['2236796085956146','3676727255865741','152453125065805']}],
+  chests:[{tokens:47,cash:0.5},{tokens:94,cash:1.5},{tokens:143,cash:3}],
+  active:0,slots:3,stake:1};
 poolRates();   // warm the sample once (~1s)
-if(!ST.days.length){ST.days.push(newDay());ST.active=0;}
+if(!ST.days.length||!ST.days.some(d=>(d.missions||[]).length)){
+  ST=JSON.parse(JSON.stringify(DEFAULT_PLAN));
+  const se=document.getElementById('slotsN');if(se)se.value=ST.slots||3;
+  const sk=document.getElementById('stakeN');if(sk)sk.value=ST.stake||1;
+}
 render();
 renderLive();
 (function(){const m=location.hash.match(/room=([A-Za-z0-9\-]+)/);if(m)liveJoin(m[1]);})();
