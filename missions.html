@@ -278,7 +278,7 @@
     <span class="lbl" id="bankCtx" style="margin-left:auto"></span>
   </div>
   <p class="note" style="margin-bottom:12px">Pick days → Build chains makes one chain per day, sized on the pool average (random decks). Edit any target / tokens / bonus. Configure the chase bar below, then Save program and set who receives it by segment. Export packs every saved program into one bundle.</p>
-  <div id="bankCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px"></div>
+  <div id="bankCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(500px,1fr));gap:12px"></div>
 
   <h2>Chase bar <small>the program's chests — anchor to a day end or set tokens manually</small></h2>
   <div class="panel">
@@ -1903,7 +1903,8 @@ function renderProgs(){
       style="width:300px;background:var(--inset);border:1px solid var(--line);color:var(--text);
       padding:4px 8px;border-radius:6px;font-family:var(--mono);font-size:11.5px"></td>
     <td><input type="number" min="1" value="${p.priority}" data-pgp="${i}" style="width:52px"></td>
-    <td><button data-pgl="${i}" title="load this program back into the editor above">Load</button></td>
+    <td style="white-space:nowrap"><button data-pgl="${i}" title="load this program back into the editor above">Load</button>
+      <button data-pge="${i}" title="download this program alone as its own bundle JSON">JSON</button></td>
     <td><button class="x" data-pgx="${i}">✕</button></td></tr>`).join('')
     ||'<tr><td colspan="7" class="dim" style="text-align:left">no saved programs — build chains, configure the bar, press Save program</td></tr>';
 }
@@ -1927,14 +1928,14 @@ function renderBank(){
         <span class="dim" style="font-family:var(--mono);font-size:11px" title="expected / max tokens">${ev.tokExp.toFixed(0)} / ${ev.tokMax}t</span>
         <span style="margin-left:auto"><button class="x" data-brm="${ci}" title="rebuild just this day's chain">⟳</button></span>
       </div>
-      <table><thead><tr><th>Mission</th><th>Target</th><th>Tok</th><th>Bonus $</th><th>P</th></tr></thead><tbody>
+      <div style="overflow-x:auto"><table><thead><tr><th>Mission</th><th>Target</th><th>Tok</th><th>Bonus $</th><th>P</th></tr></thead><tbody>
       ${c.missions.map((m,j)=>`<tr>
         <td>${j<Math.max(1,ST.slots||3)?'<span class="tag open">open</span> ':'<span class="tag q">Q</span> '}${M29[MI[m.type]][1]}</td>
         <td><input type="number" min="1" value="${m.target}" data-bt="${ci}:${j}" style="width:52px"></td>
         <td><input type="number" min="1" value="${m.tokens}" data-btk="${ci}:${j}" style="width:52px"></td>
         <td><input type="number" min="0" step="0.05" value="${m.cash??''}" placeholder="—" data-bch="${ci}:${j}" style="width:60px"></td>
         <td><span class="pb ${pcls(ev.pPer[j])}">${ptx(ev.pPer[j])}</span></td></tr>`).join('')}
-      </tbody></table>
+      </tbody></table></div>
     </div>`;}).join('')
     :'<div class="dim" style="font-size:12px">no chains yet — pick days and press Build chains</div>';
   renderProgChase();
@@ -1957,9 +1958,9 @@ function saveProgram(){
   save();renderProgs();
   err.innerHTML='<span class="ok">Program saved — set its condition and priority in the Saved programs table.</span>';
 }
-function exportProgramsBundle(){
+function exportProgramsBundle(only){
   const err=document.getElementById('err');err.textContent='';
-  const ps=[...progsOf()].sort((a,b)=>a.priority-b.priority);
+  const ps=[...(only||progsOf())].sort((a,b)=>a.priority-b.priority);
   if(!ps.length){err.textContent='Save at least one program first.';showTab('bank');return;}
   if(new Set(ps.map(p=>+p.priority)).size!==ps.length){
     err.textContent='Program priorities must be unique — they become the segment order.';return;}
@@ -1998,8 +1999,13 @@ function exportProgramsBundle(){
     segments,configs};
   const blob=new Blob([JSON.stringify(bundle,null,2)+'\n'],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=`bundle_${ymd}_programs.json`;a.click();URL.revokeObjectURL(a.href);
-  err.innerHTML='<span class="ok">Programs bundle exported — '+segments.length+' programs, each a scripted config with its own chase.</span>';
+  a.download=only&&only.length===1
+    ?`bundle_${ymd}_${slug(only[0].name)}.json`
+    :`bundle_${ymd}_programs.json`;
+  a.click();URL.revokeObjectURL(a.href);
+  err.innerHTML='<span class="ok">'+(only&&only.length===1
+    ?'Program "'+only[0].name+'" exported as its own bundle.'
+    :'Programs bundle exported — '+segments.length+' programs, each a scripted config with its own chase.')+'</span>';
 }
 document.getElementById('bankGen').onclick=()=>{
   const n=Math.max(2,Math.min(30,+document.getElementById('bankN').value||5));
@@ -2052,6 +2058,7 @@ document.getElementById('progTbl').addEventListener('click',e=>{
     document.getElementById('progName').value=p.name;
     save();renderBank();
   }
+  else if(d.pge!=null)exportProgramsBundle([ps[+d.pge]]);
   else if(d.pgx!=null){ps.splice(+d.pgx,1);save();renderProgs();}
   else return;});
 document.getElementById('bankCards').addEventListener('click',e=>{
