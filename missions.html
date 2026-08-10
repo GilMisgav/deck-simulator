@@ -1775,7 +1775,8 @@ function bankEval(chain,M){
     tokExp:chain.missions.reduce((a,m,j)=>a+m.tokens*sim.pDone[j],0),
     tokMax:chain.missions.reduce((a,m)=>a+m.tokens,0)};
 }
-function genChain(M,pAll){
+function genChain(M,pAll,used){
+  used=used||new Map();
   const R=poolRates();
   const slots=Math.max(1,ST.slots||3);
   // each mission gets a LANE SHARE of the day: 5 missions ride `slots` slots,
@@ -1784,21 +1785,30 @@ function genChain(M,pAll){
   // probability-budget selection: pAll is a product of five per-mission odds,
   // so a type may only be picked if the best remaining tail can still cover
   // the target. Rare types get in only when the difficulty (or M) affords them.
-  const rank=M29.map((m,i)=>({t:m[0],r:R[i]})).filter(x=>x.r>0.02)
+  const rank=M29.map((m,i)=>({t:m[0],cat:m[2],r:R[i]})).filter(x=>x.r>0.02)
     .map(x=>({...x,p:poisAtLeast(x.r*w,1)}))   // ceiling: odds at target 1 in the lane window
     .sort((a,b)=>b.p-a.p);
-  const sel=[];let prod=1;
+  // budget: 3 "core" slots need their fair share p1 = pAll^(1/5); up to 2
+  // "spice" slots may go as low as pAll/0.97⁴ — the commons overshoot covers
+  // them, and the refine loop calibrates the exact total afterwards
+  const p1sel=Math.min(0.97,Math.pow(pAll,1/5));
+  const spiceBar=pAll/Math.pow(0.97,4);
+  const core=rank.filter(x=>x.p>=p1sel*0.9);
+  const spice=rank.filter(x=>x.p>=spiceBar&&x.p<p1sel*0.9);
+  const sel=[];let spiceUsed=0;
   for(let k=0;k<5;k++){
-    const remain=4-k;
-    const avail=rank.filter(x=>!sel.some(s=>s.t===x.t));
-    const feas=avail.filter(x=>{
-      const tail=avail.filter(y=>y!==x).slice(0,remain).reduce((a,y)=>a*y.p,1);
-      return prod*x.p*tail>=pAll*0.85;
-    });
-    const src=feas.length?feas:avail;
-    // random among the feasible set, leaning to its lower half for variety
-    const x=src[Math.floor(Math.random()*src.length)];
-    sel.push(x);prod*=x.p;
+    const catCount={};sel.forEach(s=>catCount[s.cat]=(catCount[s.cat]||0)+1);
+    let avail=[...core,...(spiceUsed<2?spice:[])].filter(x=>!sel.some(s=>s.t===x.t));
+    if(avail.length<5-k)avail=rank.filter(x=>!sel.some(s=>s.t===x.t));
+    // variety: at most 2 per category within the day…
+    const catOk=avail.filter(x=>(catCount[x.cat]||0)<2);
+    if(catOk.length)avail=catOk;
+    // …and across days: always take one of the LEAST-used types (ties random)
+    const minU=Math.min(...avail.map(x=>used.get(x.t)||0));
+    const least=avail.filter(x=>(used.get(x.t)||0)===minU);
+    const x=least[Math.floor(Math.random()*least.length)];
+    if(spice.includes(x))spiceUsed++;
+    sel.push(x);
   }
   sel.sort((a,b)=>b.r-a.r);                 // commons first — a rare slot-1 walls the day
   const p1=Math.min(0.97,Math.pow(pAll,1/5));
@@ -1916,9 +1926,13 @@ function renderBank(){
   const kps=POOL_SAMPLE.slice(0,60).map(d=>deckKPIs(d,30));
   const avgFun=Math.round(kps.reduce((a,k)=>a+funScore(k),0)/kps.length);
   const avgRtp=kps.reduce((a,k)=>a+k.rtp,0)/kps.length;
+  const R2=poolRates(),slots2=Math.max(1,ST.slots||3);
+  const w2=M*slots2/5/1.1,pAll2=+document.getElementById('bankDiff').value||0.65;
+  const palette=M29.filter((m,i)=>R2[i]>0.02&&poisAtLeast(R2[i]*w2,1)>=pAll2/Math.pow(0.97,4)).length;
   document.getElementById('bankCtx').innerHTML=
-    `random-deck experience ≈ fun <b style="color:${avgFun>=70?'var(--win)':avgFun>=45?'var(--gold)':'var(--lose)'}">${avgFun}</b>
-     · rtp <b style="color:${rtpColor(avgRtp)}">${avgRtp.toFixed(2)}</b> (pool average — identical for every random day)`;
+    `palette: <b>${palette}</b> viable types at this completion × matches/day (more matches or lower completion = more variety)
+     · fun <b style="color:${avgFun>=70?'var(--win)':avgFun>=45?'var(--gold)':'var(--lose)'}">${avgFun}</b>
+     · rtp <b style="color:${rtpColor(avgRtp)}">${avgRtp.toFixed(2)}</b>`;
   el.innerHTML=bank.length?bank.map((c,ci)=>{
     const ev=bankEval(c,M);
     return `<div class="panel" style="margin:0">
@@ -2011,7 +2025,11 @@ document.getElementById('bankGen').onclick=()=>{
   const n=Math.max(2,Math.min(30,+document.getElementById('bankN').value||5));
   const M=Math.max(1,+document.getElementById('bankMpd').value||6);
   const pAll=+document.getElementById('bankDiff').value||0.65;
-  ST.bank=Array.from({length:n},()=>genChain(M,pAll));
+  const used=new Map();                      // cross-day variety pressure
+  ST.bank=Array.from({length:n},()=>{
+    const c=genChain(M,pAll,used);
+    c.missions.forEach(m=>used.set(m.type,(used.get(m.type)||0)+1));
+    return c;});
   ST.bankChests=null;                        // re-anchor the default chests to the new day count
   save();renderBank();};
 document.getElementById('progSave').onclick=saveProgram;
@@ -2065,7 +2083,9 @@ document.getElementById('bankCards').addEventListener('click',e=>{
   const b=e.target.closest('[data-brm]');if(!b)return;
   const M=Math.max(1,+document.getElementById('bankMpd').value||6);
   const pAll=+document.getElementById('bankDiff').value||0.65;
-  bankOf()[+b.dataset.brm]=genChain(M,pAll);  // rebuild just this day
+  const i=+b.dataset.brm,used=new Map();
+  bankOf().forEach((c,j)=>{if(j!==i)c.missions.forEach(m=>used.set(m.type,(used.get(m.type)||0)+1));});
+  bankOf()[i]=genChain(M,pAll,used);          // rebuild just this day, avoiding the others' types
   save();renderBank();});
 document.getElementById('bankCards').addEventListener('change',e=>{
   const t=e.target,d=t.dataset,bank=bankOf();
