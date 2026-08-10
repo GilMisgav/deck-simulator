@@ -1748,8 +1748,8 @@ function exportCalendric(){
    A chain = 5 distinct mission types, commons first, targets tuned so the
    whole chain completes at the chosen rate within the day's matches. */
 const bankOf=()=>{if(!Array.isArray(ST.bank))ST.bank=[];return ST.bank;};
-function bankTiers(days){                   // chase chests: worst-case chain × days (rule: completable)
-  const bank=bankOf();
+function bankTiers(days,subset){            // chase chests: worst-case chain × days (rule: completable)
+  const bank=subset||bankOf();
   const worst=bank.length?Math.min(...bank.map(c=>c.missions.reduce((a,m)=>a+m.tokens,0))):0;
   const budget=worst*days;
   const tiers=[0.35,0.7,0.95].map((f,i)=>({tokens:Math.max(i+1,Math.floor(budget*f)),
@@ -1816,11 +1816,23 @@ function genChain(M,pAll){
 }
 const clustersOf=()=>{
   if(!Array.isArray(ST.clusters)||!ST.clusters.length)
-    ST.clusters=[{name:'Light',mpd:3},{name:'Core',mpd:6},{name:'Heavy',mpd:12}];
+    ST.clusters=[
+      {name:'Whales & dolphins',mpd:12,priority:1,condition:'spend_tier in ("dolphin", "whale")',chains:null},
+      {name:'Payers · minnow',mpd:6,priority:2,condition:'spend_tier == "minnow"',chains:null},
+      {name:'Veterans · free',mpd:6,priority:3,condition:'days_in_app > 14',chains:null},
+      {name:'Everyone else',mpd:3,priority:4,condition:'matches_total >= 1',chains:null}];
+  ST.clusters.forEach((c,i)=>{               // migrate older cluster shapes
+    if(c.priority==null)c.priority=i+1;
+    if(c.condition==null)c.condition='matches_total >= 1';
+    if(c.chains===undefined)c.chains=null;});
   return ST.clusters;
 };
-function clusterData(mpd,days){             // one pace bucket over the weighted chain pool
-  const bank=bankOf();if(!bank.length)return null;
+const clusterBank=cl=>{                      // the chains this cluster actually gets (null = all)
+  const bank=bankOf();
+  return cl.chains==null?bank:bank.filter((_,i)=>cl.chains.includes(i));
+};
+function clusterData(mpd,days,subset){       // one pace bucket over a weighted chain subset
+  const bank=subset||bankOf();if(!bank.length)return null;
   const W=bank.reduce((a,c)=>a+(+c.weight||1),0);
   const curve=new Array(mpd).fill(0);       // weighted expected cumulative tokens per match within a day
   let dailyDone=0,missPerDay=0;
@@ -1833,7 +1845,7 @@ function clusterData(mpd,days){             // one pace bucket over the weighted
     missPerDay+=w*sim.pDone.reduce((a,b)=>a+b,0);
   }
   const tokPerDay=curve[mpd-1];
-  const chests=bankTiers(days).map(t=>{
+  const chests=bankTiers(days,bank).map(t=>{
     let day=null,match=null;
     for(let d=0;d<days&&day==null;d++){
       const base=d*tokPerDay;
@@ -1850,19 +1862,39 @@ function renderClusters(){
   const bank=bankOf();
   if(!bank.length){el.innerHTML='<div class="dim" style="font-size:12px">generate chains first</div>';return;}
   el.innerHTML=clustersOf().map((cl,ci)=>{
-    const d=clusterData(Math.max(1,+cl.mpd||3),days);
-    const last=d.chests[d.chests.length-1].tokens;
+    const subset=clusterBank(cl);
+    const d=subset.length?clusterData(Math.max(1,+cl.mpd||3),days,subset):null;
+    const last=d?d.chests[d.chests.length-1].tokens:1;
     const pct=v=>Math.max(0,Math.min(100,100*v/last));
+    const chips=bank.map((c,i)=>{
+      const on=cl.chains==null||cl.chains.includes(i);
+      return `<button data-clch="${ci}:${i}" class="pb" style="cursor:pointer;border:1px solid ${on?'var(--gold-dim)':'var(--line)'};
+        background:${on?'var(--gold-soft)':'var(--inset)'};color:${on?'var(--gold)':'var(--muted)'}"
+        title="chain ${i+1}: ${c.missions.map(m=>M29[MI[m.type]][1]).join(', ')} — click to ${on?'remove from':'add to'} this cluster">C${i+1}</button>`;}).join('');
     return `<div class="panel" style="margin:0">
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
         <input type="text" value="${(cl.name||'').replace(/"/g,'&quot;')}" data-cln="${ci}"
-          style="width:110px;background:var(--inset);border:1px solid var(--line);color:var(--gold);
+          style="width:150px;background:var(--inset);border:1px solid var(--line);color:var(--gold);
           padding:4px 8px;border-radius:6px;font-size:12.5px;font-weight:600">
+        <span class="lbl" title="segment evaluation order — lowest first, must be unique">pr</span>
+        <input type="number" min="1" value="${cl.priority}" data-clp="${ci}" style="width:44px">
         <span class="lbl">matches / day</span>
         <input type="number" min="1" max="40" value="${cl.mpd}" data-clm="${ci}">
-        <span style="margin-left:auto" class="pb ${pcls(d.dailyDone)}"
-          title="chance a day's full chain (all 5) completes at this pace">${ptx(d.dailyDone)}</span>
+        <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+          ${d?`<span class="pb ${pcls(d.dailyDone)}" title="chance a day's full chain (all 5) completes at this pace">${ptx(d.dailyDone)}</span>`:''}
+          <button class="x" data-clrm="${ci}" title="remove cluster">✕</button>
+        </span>
       </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+        <span class="lbl" title="who lands in this cluster — server fields only: level, matches_total, matches_per_game, days_in_app, minutes_since_install, installed_at, country, is_registered, spend_tier. RTP / buy-in are NOT targetable by the server.">cond</span>
+        <input type="text" value="${(cl.condition||'').replace(/"/g,'&quot;')}" data-clc="${ci}"
+          style="flex:1;background:var(--inset);border:1px solid var(--line);color:var(--text);
+          padding:4px 8px;border-radius:6px;font-family:var(--mono);font-size:11.5px">
+      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
+        <span class="lbl" title="which chains from the bank this cluster is served — its pool in the exported config">chains</span>${chips}
+      </div>
+      ${d?`
       <div class="metabar" style="height:88px">
         <div class="track" style="top:44px"><div class="fexp" style="width:${pct(d.total)}%"></div></div>
         ${d.chests.map(c=>{const x=pct(c.tokens),sh=x>92?'-88%':x<8?'-12%':'-50%';
@@ -1872,8 +1904,9 @@ function renderClusters(){
       <div class="dim" style="font-family:var(--mono);font-size:11px;margin-top:4px">
         ${d.missPerDay.toFixed(1)}/5 missions/day · ${d.tokPerDay.toFixed(0)} tokens/day ·
         run ends at ${(d.total).toFixed(0)}t of ${last}t${d.total>=last?' — chase DONE':''}
-      </div>
-    </div>`;}).join('');
+      </div>`:'<div class="dim" style="font-size:12px">select at least one chain</div>'}
+    </div>`;}).join('')
+    +`<button class="adddaybig" data-cladd style="align-self:start">+ Add cluster</button>`;
 }
 function renderBank(){
   const el=document.getElementById('bankCards');if(!el)return;
@@ -1915,41 +1948,53 @@ function exportRandomBundle(){
   const err=document.getElementById('err');err.textContent='';
   const bank=bankOf();
   if(bank.length<2){err.textContent='Generate at least 2 chains first.';showTab('bank');return;}
-  const segs=[...segsOf()].sort((a,b)=>a.priority-b.priority);
-  if(new Set(segs.map(s=>+s.priority)).size!==segs.length){err.textContent='Segment priorities must be unique.';return;}
-  const chains={},pool=[];
-  for(const c of bank){
-    const ms=c.missions.map((m,i)=>({index:i+1,type:m.type,target:m.target,
-      reward:{mission_token:m.tokens,...(m.cash>0?{bonusCash:+(+m.cash).toFixed(2)}:{})}}));
-    const comp=compId(ms),uid='chn.'+comp;
-    ms.forEach(m=>{const o={missionUid:`msn.${comp}.${m.type}`,index:m.index,type:m.type,
-      target:m.target,reward:m.reward};Object.keys(m).forEach(k=>delete m[k]);Object.assign(m,o);});
-    if(chains[uid]){                        // same composition twice → merge the weights
-      const ex=pool.find(p=>p.chainUid===uid);ex.weight+=(+c.weight||1);continue;}
-    chains[uid]={chainUid:uid,label:'Bank chain '+(pool.length+1),missions:ms};
-    pool.push({chainUid:uid,weight:+c.weight||1});
-  }
-  if(pool.length<2){err.textContent='All chains have the same mission composition — vary them.';return;}
+  const cls=[...clustersOf()].sort((a,b)=>a.priority-b.priority);
+  if(!cls.length){err.textContent='Add at least one cluster.';return;}
+  if(new Set(cls.map(c=>+c.priority)).size!==cls.length){
+    err.textContent='Cluster priorities must be unique — they become the segment order.';return;}
+  if(cls.some(c=>!(c.condition||'').trim())){
+    err.textContent='Every cluster needs a condition.';return;}
   const days=Math.max(2,+document.getElementById('bankDays').value||7);
-  const tiers=bankTiers(days).map((t,i)=>({tierUid:`tier.bank.${i+1}`,
-    tokensRequired:t.tokens,reward:{bonusCash:t.cash}}));
-  const today=new Date();
-  const ymd=today.getFullYear()+String(today.getMonth()+1).padStart(2,'0')+String(today.getDate()).padStart(2,'0');
-  const bundle={version:4,bundleUid:`bnd.calendric.${ymd}.02`,bundleType:'calendric',
-    segments:segs.map((s,i)=>({segmentUid:'seg_p'+s.priority,label:s.label||('Segment '+(i+1)),
-      priority:+s.priority,configUid:'cfg.calendric.bank',condition:s.condition.trim()})),
-    configs:{'cfg.calendric.bank':{
-      configUid:'cfg.calendric.bank',configType:'random',
+  const slug=s=>((s||'cluster').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'cluster');
+  const segments=[],configs={},usedSlugs=new Set();
+  for(const cl of cls){
+    const subset=clusterBank(cl);
+    if(subset.length<2){err.textContent=`Cluster "${cl.name}" needs at least 2 chains (noRepeatDays must be < pool size).`;return;}
+    const chains={},pool=[];
+    for(const c of subset){
+      const ms=c.missions.map((m,i)=>({index:i+1,type:m.type,target:m.target,
+        reward:{mission_token:m.tokens,...(m.cash>0?{bonusCash:+(+m.cash).toFixed(2)}:{})}}));
+      const comp=compId(ms),uid='chn.'+comp;
+      ms.forEach(m=>{const o={missionUid:`msn.${comp}.${m.type}`,index:m.index,type:m.type,
+        target:m.target,reward:m.reward};Object.keys(m).forEach(k=>delete m[k]);Object.assign(m,o);});
+      if(chains[uid]){const ex=pool.find(p=>p.chainUid===uid);ex.weight+=(+c.weight||1);continue;}
+      chains[uid]={chainUid:uid,label:'Bank chain '+(bankOf().indexOf(c)+1),missions:ms};
+      pool.push({chainUid:uid,weight:+c.weight||1});
+    }
+    if(pool.length<2){err.textContent=`Cluster "${cl.name}": its chains share one composition — vary them.`;return;}
+    let sl=slug(cl.name),n=2;while(usedSlugs.has(sl))sl=slug(cl.name)+'_'+n++;
+    usedSlugs.add(sl);
+    const cfgUid='cfg.calendric.'+sl;
+    const tiers=bankTiers(days,subset).map((t,i)=>({tierUid:`tier.${sl}.${i+1}`,
+      tokensRequired:t.tokens,reward:{bonusCash:t.cash}}));
+    segments.push({segmentUid:'seg_p'+cl.priority,label:cl.name||'Cluster',
+      priority:+cl.priority,configUid:cfgUid,condition:cl.condition.trim()});
+    configs[cfgUid]={configUid:cfgUid,configType:'random',
       prorationCalendricFirstExposure:{enabled:true,rewardRounding:0.1,
         effortRounding:1,minReward:{bonusCash:0.10}},
       dailyMissions:{visibleSlots:Math.min(Math.max(1,ST.slots||3),5),dailyCap:5},
       pool,noRepeatDays:Math.min(3,pool.length-1),
       chains,
-      progression:{numberOfDays:days,tiers}}}};
+      progression:{numberOfDays:days,tiers}};
+  }
+  const today=new Date();
+  const ymd=today.getFullYear()+String(today.getMonth()+1).padStart(2,'0')+String(today.getDate()).padStart(2,'0');
+  const bundle={version:4,bundleUid:`bnd.calendric.${ymd}.02`,bundleType:'calendric',
+    segments,configs};
   const blob=new Blob([JSON.stringify(bundle,null,2)+'\n'],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download=`bundle_${ymd}_bank_random.json`;a.click();URL.revokeObjectURL(a.href);
-  err.innerHTML='<span class="ok">Random calendric bundle exported — '+pool.length+' chains in the pool, chests sized to the worst-case chain.</span>';
+  err.innerHTML='<span class="ok">Random calendric bundle exported — '+segments.length+' clusters, each with its own config, pool and chase.</span>';
 }
 document.getElementById('bankGen').onclick=()=>{
   const n=Math.max(2,Math.min(30,+document.getElementById('bankN').value||8));
@@ -1965,6 +2010,24 @@ document.getElementById('bankClusters').addEventListener('change',e=>{
   const t=e.target,d=t.dataset,cs=clustersOf();
   if(d.cln!=null)cs[+d.cln].name=t.value;
   else if(d.clm!=null)cs[+d.clm].mpd=Math.max(1,Math.min(40,+t.value||3));
+  else if(d.clp!=null)cs[+d.clp].priority=Math.max(1,+t.value||1);
+  else if(d.clc!=null)cs[+d.clc].condition=t.value;
+  else return;
+  save();renderClusters();});
+document.getElementById('bankClusters').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const d=b.dataset,cs=clustersOf();
+  if(d.clch!=null){
+    const[ci,i]=d.clch.split(':').map(Number);
+    const cl=cs[ci],n=bankOf().length;
+    let set=cl.chains==null?Array.from({length:n},(_,k)=>k):cl.chains.slice();
+    set=set.includes(i)?set.filter(x=>x!==i):[...set,i].sort((a,b2)=>a-b2);
+    cl.chains=set.length===n?null:set;
+  }
+  else if(d.clrm!=null)cs.splice(+d.clrm,1);
+  else if(d.cladd!==undefined)cs.push({name:'New cluster',mpd:6,
+    priority:Math.max(0,...cs.map(c=>+c.priority||0))+1,
+    condition:'matches_total >= 1',chains:null});
   else return;
   save();renderClusters();});
 document.getElementById('bankCards').addEventListener('click',e=>{
