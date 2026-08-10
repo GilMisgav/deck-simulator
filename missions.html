@@ -1898,8 +1898,16 @@ function loadDefaultPlan(){
 })();
 render();
 renderLive();
-(function(){const m=location.hash.match(/room=([A-Za-z0-9\-]+)/);
-  liveJoin(m?m[1]:DEFAULT_ROOM);})();
+(function(){
+  const m=location.hash.match(/room=([A-Za-z0-9\-]+)/);
+  const target=m?m[1]:DEFAULT_ROOM;
+  let tries=0;
+  const go=async()=>{                       // retry: jsonblob rate-limits bursts (HTTP 429)
+    await liveJoin(target);
+    if(!LIVE.id&&++tries<8)setTimeout(go,15000);
+  };
+  go();
+})();
 </script>
 </body>
 </html>
