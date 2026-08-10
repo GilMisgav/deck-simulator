@@ -206,6 +206,19 @@
   </tr></thead><tbody></tbody></table>
 </div>
 
+<h2>Bundle segments <small>who receives this plan — lowest priority that matches wins, so put narrow segments first</small></h2>
+<div class="panel">
+  <table id="segTbl" style="max-width:860px"><thead><tr>
+    <th title="evaluation order, lowest first — must be unique">Priority</th>
+    <th>Label</th>
+    <th title="fields: level, matches_total, matches_per_game, days_in_app, minutes_since_install, installed_at, country, is_registered, spend_tier · operators: && || ! () > >= < <= == != in">Condition</th>
+    <th></th></tr></thead><tbody></tbody></table>
+  <div class="bar" style="margin:8px 0 0">
+    <button id="segAdd">+ segment</button>
+    <span class="lbl">all segments receive this plan's config · conditions are validated at upload</span>
+  </div>
+</div>
+
 <h2>Effort <small>matches demanded per day · spacing between chest milestones</small></h2>
 <div class="panel">
   <div style="display:flex;gap:36px;flex-wrap:wrap;align-items:flex-start">
@@ -1027,6 +1040,7 @@ function render(){
         <td>${slot} ${M29[MI[x.m.type]][1]}</td>
         <td><input type="number" min="1" value="${x.m.target}" data-t="${di}:${j}"></td>
         <td><input type="number" min="1" value="${x.m.tokens}" data-k="${di}:${j}"></td>
+        <td><input type="number" min="0" step="0.05" value="${x.m.cash??''}" placeholder="—" data-bc="${di}:${j}" style="width:64px" title="optional real bonus cash paid when the mission is claimed — exported as reward.bonusCash (blank = token-only mission)"></td>
         <td><input type="number" min="1" max="${Math.max(day.matches||0,day.deckCount||3)}" value="${x.m.due||''}" placeholder="—" data-due="${di}:${j}" title="deck on which this mission should COMPLETE — Fit decks will pace the day so it lands there (empty = as soon as possible)">${(()=>{
           if(!x.m.due)return '';
           const rb=rateBounds(x.m.type);
@@ -1086,6 +1100,7 @@ function render(){
         </span>
       </div>
       ${rows?`<table><thead><tr><th>Mission</th><th>Target</th><th>Tokens</th>
+        <th title="optional bonusCash on claim — blank = token-only">Bonus $</th>
         <th title="deck on which the mission should complete — Fit decks paces the day accordingly (empty = ASAP)">Due deck</th>
         <th title="median matches to complete at this target">~Matches</th>
         <th title="tokens ÷ ~matches — reward per match of effort">Tok/Effort</th><th>P</th><th></th></tr></thead>
@@ -1095,9 +1110,27 @@ function render(){
     </div>`;}).join('')
     +`<button class="adddaybig" data-addday title="add another day to the plan">+ Add day</button>`;
   renderChests();
+  renderSegs();
   renderEffort();
   renderCurves();
   save();
+}
+function segsOf(){                          // segments with a sane default
+  if(!Array.isArray(ST.segments)||!ST.segments.length)
+    ST.segments=[{label:'All players',priority:1,condition:'matches_total >= 1'}];
+  return ST.segments;
+}
+function renderSegs(){
+  const tb=document.querySelector('#segTbl tbody');if(!tb)return;
+  tb.innerHTML=segsOf().map((s,i)=>`<tr>
+    <td><input type="number" min="1" value="${s.priority}" data-sp="${i}" style="width:52px"></td>
+    <td><input type="text" value="${(s.label||'').replace(/"/g,'&quot;')}" data-sl="${i}"
+      style="width:220px;background:var(--inset);border:1px solid var(--line);color:var(--text);
+      padding:5px 7px;border-radius:6px;font-size:12px"></td>
+    <td><input type="text" value="${(s.condition||'').replace(/"/g,'&quot;')}" data-sc="${i}"
+      style="width:320px;background:var(--inset);border:1px solid var(--line);color:var(--text);
+      padding:5px 7px;border-radius:6px;font-family:var(--mono);font-size:12px"></td>
+    <td><button class="x" data-srm="${i}">✕</button></td></tr>`).join('');
 }
 function tokensByMatchArr(stats){          // cumulative EXPECTED tokens after each global match
   const out=[];let base=0;
@@ -1318,11 +1351,16 @@ function exportBundle(){
     `Every day needs the same mission count (dailyCap) — got [${caps.join(', ')}]. Even them out.`;return;}
   if(!(ST.chests.length>=2&&ST.chests.length<=5)){err.textContent=
     `Progression needs 2–5 chests (rule 11) — you have ${ST.chests.length}.`;return;}
+  const segs=[...segsOf()].sort((a,b)=>a.priority-b.priority);
+  if(new Set(segs.map(s=>+s.priority)).size!==segs.length){
+    err.textContent='Segment priorities must be unique.';return;}
+  if(segs.some(s=>!(s.condition||'').trim())){
+    err.textContent='Every segment needs a condition (rule: an empty condition is rejected).';return;}
   const D=ST.days.length;
   const chains={},rotation=[];
   for(const day of ST.days){
     const ms=day.missions.map((m,i)=>({index:i+1,type:m.type,target:m.target,
-      reward:{mission_token:m.tokens}}));
+      reward:{mission_token:m.tokens,...(m.cash>0?{bonusCash:+(+m.cash).toFixed(2)}:{})}}));
     const comp=compId(ms);
     const uid='chn.'+comp;
     ms.forEach(m=>{m.missionUid=`msn.${comp}.${m.type}`;
@@ -1342,8 +1380,9 @@ function exportBundle(){
   const bundle={version:4,
     bundleUid:`bnd.personal.${ymd}.01`,
     bundleType:'personal',
-    segments:[{segmentUid:'seg_all',label:'All players',priority:1,
-      configUid:`cfg.personal.${slug}`,condition:'matches_total >= 1'}],
+    segments:segs.map((s,i)=>({segmentUid:'seg_p'+s.priority,
+      label:s.label||('Segment '+(i+1)),priority:+s.priority,
+      configUid:`cfg.personal.${slug}`,condition:s.condition.trim()})),
     configs:{[`cfg.personal.${slug}`]:{
       configUid:`cfg.personal.${slug}`,configType:'scripted',
       timing:{personal:{durationDays:D,dailyWindowHours:24}},
@@ -1496,6 +1535,8 @@ document.getElementById('days').addEventListener('change',e=>{
   else if(d.due!=null){const[i,j]=d.due.split(':').map(Number);
     const v=+t.value;ST.days[i].missions[j].due=v>0?v:undefined;}
   else if(d.k!=null){const[i,j]=d.k.split(':').map(Number);ST.days[i].missions[j].tokens=Math.max(1,+t.value||1);}
+  else if(d.bc!=null){const[i,j]=d.bc.split(':').map(Number);
+    const v=+t.value;ST.days[i].missions[j].cash=v>0?+v.toFixed(2):undefined;}
   else if(d.dc!=null){ST.days[+d.dc].deckCount=Math.max(1,+t.value||1);}
   else if(d.mc!=null){ST.days[+d.mc].matches=Math.max(1,+t.value||1);}
   else if(d.fmin!=null){const v=t.value===''?null:Math.max(0,Math.min(100,+t.value));
@@ -1514,6 +1555,20 @@ document.getElementById('days').addEventListener('change',e=>{
     if(v==null)delete ST.rtpOverrides[d.rtpov];else ST.rtpOverrides[d.rtpov]=v;}
   else return;
   render();});
+document.getElementById('segAdd').onclick=()=>{
+  const ss=segsOf();
+  ss.push({label:'New segment',priority:Math.max(0,...ss.map(s=>+s.priority||0))+1,
+    condition:'level >= 3'});
+  render();};
+document.getElementById('segTbl').addEventListener('click',e=>{
+  const b=e.target.closest('[data-srm]');if(!b)return;
+  segsOf().splice(+b.dataset.srm,1);render();});
+document.getElementById('segTbl').addEventListener('change',e=>{
+  const t=e.target,d=t.dataset,ss=segsOf();
+  if(d.sp!=null)ss[+d.sp].priority=Math.max(1,+t.value||1);
+  else if(d.sl!=null)ss[+d.sl].label=t.value;
+  else if(d.sc!=null)ss[+d.sc].condition=t.value;
+  else return;render();});
 document.getElementById('chestAdd').onclick=()=>{
   if(ST.chests.length>=5){document.getElementById('err').textContent='Max 5 chests (rule 11).';return;}
   const last=ST.chests.length?Math.max(...ST.chests.map(c=>c.tokens)):0;
@@ -1659,10 +1714,15 @@ function exportCalendric(){
   const caps=ST.days.map(d=>(d.missions||[]).length),cap=caps[0];
   if(!cap||caps.some(c=>c!==cap)){err.textContent='Every day needs the same mission count.';return;}
   if(!(ST.chests.length>=2&&ST.chests.length<=5)){err.textContent='Progression needs 2–5 chests.';return;}
+  const segs=[...segsOf()].sort((a,b)=>a.priority-b.priority);
+  if(new Set(segs.map(s=>+s.priority)).size!==segs.length){
+    err.textContent='Segment priorities must be unique.';return;}
+  if(segs.some(s=>!(s.condition||'').trim())){
+    err.textContent='Every segment needs a condition.';return;}
   const chains={},rotation=[];
   for(const day of ST.days){
     const ms=day.missions.map((m,i)=>({index:i+1,type:m.type,target:m.target,
-      reward:{mission_token:m.tokens}}));
+      reward:{mission_token:m.tokens,...(m.cash>0?{bonusCash:+(+m.cash).toFixed(2)}:{})}}));
     const comp=compId(ms);const uid='chn.'+comp;
     ms.forEach(m=>{const o={missionUid:`msn.${comp}.${m.type}`,index:m.index,type:m.type,
       target:m.target,reward:m.reward};Object.keys(m).forEach(k=>delete m[k]);Object.assign(m,o);});
@@ -1675,11 +1735,13 @@ function exportCalendric(){
   const today=new Date();
   const ymd=today.getFullYear()+String(today.getMonth()+1).padStart(2,'0')+String(today.getDate()).padStart(2,'0');
   const bundle={version:4,bundleUid:`bnd.calendric.${ymd}.01`,bundleType:'calendric',
-    segments:[{segmentUid:'seg_all',label:'All players',priority:1,
-      configUid:`cfg.calendric.${slug}`,condition:'matches_total >= 1'}],
+    segments:segs.map((s,i)=>({segmentUid:'seg_p'+s.priority,
+      label:s.label||('Segment '+(i+1)),priority:+s.priority,
+      configUid:`cfg.calendric.${slug}`,condition:s.condition.trim()})),
     configs:{[`cfg.calendric.${slug}`]:{
       configUid:`cfg.calendric.${slug}`,configType:'scripted',
-      prorationCalendricFirstExposure:{enabled:true,minReward:{bonusCash:0.10}},
+      prorationCalendricFirstExposure:{enabled:true,rewardRounding:0.1,
+        effortRounding:1,minReward:{bonusCash:0.10}},
       dailyMissions:{visibleSlots:Math.min(Math.max(1,ST.slots||3),cap),dailyCap:cap},
       rotation,chains,
       progression:{numberOfDays:ST.days.length,tiers}}}};
