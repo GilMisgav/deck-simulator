@@ -276,6 +276,9 @@
   </div>
   <p class="note" style="margin-bottom:12px">Post-onboarding content: the player gets RANDOM decks, so every chain is sized on the pool average — no deck fitting here. Targets are auto-tuned so a chain completes at the chosen rate within the day's matches; commons sit in slots 1-3, the rare type comes last (a rare slot-1 walls the day). Edit any target/tokens/bonus; weight sets how often a chain is drawn.</p>
   <div id="bankCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px"></div>
+
+  <h2>Player clusters <small>the same chain pool at different play paces — each cluster gets its own chase bar</small></h2>
+  <div id="bankClusters" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px"></div>
 </div>
 
 <footer>
@@ -1745,6 +1748,16 @@ function exportCalendric(){
    A chain = 5 distinct mission types, commons first, targets tuned so the
    whole chain completes at the chosen rate within the day's matches. */
 const bankOf=()=>{if(!Array.isArray(ST.bank))ST.bank=[];return ST.bank;};
+function bankTiers(days){                   // chase chests: worst-case chain × days (rule: completable)
+  const bank=bankOf();
+  const worst=bank.length?Math.min(...bank.map(c=>c.missions.reduce((a,m)=>a+m.tokens,0))):0;
+  const budget=worst*days;
+  const tiers=[0.35,0.7,0.95].map((f,i)=>({tokens:Math.max(i+1,Math.floor(budget*f)),
+    cash:[0.5,1.0,2.0][i]}));
+  for(let i=1;i<tiers.length;i++)if(tiers[i].tokens<=tiers[i-1].tokens)
+    tiers[i].tokens=tiers[i-1].tokens+1;
+  return tiers;
+}
 function bankEval(chain,M){
   const fake={missions:chain.missions,deckCount:M,decks:[]};
   const sim=simDay(fake,M);
@@ -1801,6 +1814,67 @@ function genChain(M,pAll){
   }
   return chain;
 }
+const clustersOf=()=>{
+  if(!Array.isArray(ST.clusters)||!ST.clusters.length)
+    ST.clusters=[{name:'Light',mpd:3},{name:'Core',mpd:6},{name:'Heavy',mpd:12}];
+  return ST.clusters;
+};
+function clusterData(mpd,days){             // one pace bucket over the weighted chain pool
+  const bank=bankOf();if(!bank.length)return null;
+  const W=bank.reduce((a,c)=>a+(+c.weight||1),0);
+  const curve=new Array(mpd).fill(0);       // weighted expected cumulative tokens per match within a day
+  let dailyDone=0,missPerDay=0;
+  for(const c of bank){
+    const w=(+c.weight||1)/W;
+    const sim=simDay({missions:c.missions,deckCount:mpd,decks:[]},mpd);
+    for(let k=0;k<mpd;k++)
+      curve[k]+=w*c.missions.reduce((a,m,j)=>a+m.tokens*sim.doneByMatch[j][k],0);
+    dailyDone+=w*sim.allByMatch[mpd-1];
+    missPerDay+=w*sim.pDone.reduce((a,b)=>a+b,0);
+  }
+  const tokPerDay=curve[mpd-1];
+  const chests=bankTiers(days).map(t=>{
+    let day=null,match=null;
+    for(let d=0;d<days&&day==null;d++){
+      const base=d*tokPerDay;
+      for(let k=0;k<mpd;k++)
+        if(base+curve[k]>=t.tokens){day=d+1;match=d*mpd+k+1;break;}
+    }
+    return {...t,day,match};
+  });
+  return {tokPerDay,dailyDone,missPerDay,chests,total:tokPerDay*days};
+}
+function renderClusters(){
+  const el=document.getElementById('bankClusters');if(!el)return;
+  const days=Math.max(2,+document.getElementById('bankDays').value||7);
+  const bank=bankOf();
+  if(!bank.length){el.innerHTML='<div class="dim" style="font-size:12px">generate chains first</div>';return;}
+  el.innerHTML=clustersOf().map((cl,ci)=>{
+    const d=clusterData(Math.max(1,+cl.mpd||3),days);
+    const last=d.chests[d.chests.length-1].tokens;
+    const pct=v=>Math.max(0,Math.min(100,100*v/last));
+    return `<div class="panel" style="margin:0">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px">
+        <input type="text" value="${(cl.name||'').replace(/"/g,'&quot;')}" data-cln="${ci}"
+          style="width:110px;background:var(--inset);border:1px solid var(--line);color:var(--gold);
+          padding:4px 8px;border-radius:6px;font-size:12.5px;font-weight:600">
+        <span class="lbl">matches / day</span>
+        <input type="number" min="1" max="40" value="${cl.mpd}" data-clm="${ci}">
+        <span style="margin-left:auto" class="pb ${pcls(d.dailyDone)}"
+          title="chance a day's full chain (all 5) completes at this pace">${ptx(d.dailyDone)}</span>
+      </div>
+      <div class="metabar" style="height:88px">
+        <div class="track" style="top:44px"><div class="fexp" style="width:${pct(d.total)}%"></div></div>
+        ${d.chests.map(c=>{const x=pct(c.tokens),sh=x>92?'-88%':x<8?'-12%':'-50%';
+          return `<div class="cmk ${c.day!=null?'hit':''}" style="left:calc(26px + (100% - 52px) * ${x/100});transform:translateX(${sh});top:2px">
+            <i>${c.day!=null?'🎁':'🔒'}</i><b>${c.tokens}t</b>${c.day!=null?`d${c.day} · m${c.match}`:'<span style="color:var(--lose)">unreached</span>'}</div>`;}).join('')}
+      </div>
+      <div class="dim" style="font-family:var(--mono);font-size:11px;margin-top:4px">
+        ${d.missPerDay.toFixed(1)}/5 missions/day · ${d.tokPerDay.toFixed(0)} tokens/day ·
+        run ends at ${(d.total).toFixed(0)}t of ${last}t${d.total>=last?' — chase DONE':''}
+      </div>
+    </div>`;}).join('');
+}
 function renderBank(){
   const el=document.getElementById('bankCards');if(!el)return;
   const M=Math.max(1,+document.getElementById('bankMpd').value||6);
@@ -1835,6 +1909,7 @@ function renderBank(){
       </tbody></table>
     </div>`;}).join('')
     :'<div class="dim" style="font-size:12px">no chains yet — set completion and press Generate</div>';
+  renderClusters();
 }
 function exportRandomBundle(){
   const err=document.getElementById('err');err.textContent='';
@@ -1856,13 +1931,8 @@ function exportRandomBundle(){
   }
   if(pool.length<2){err.textContent='All chains have the same mission composition — vary them.';return;}
   const days=Math.max(2,+document.getElementById('bankDays').value||7);
-  const worst=Math.min(...Object.values(chains).map(c=>c.missions.reduce((a,m)=>a+m.reward.mission_token,0)));
-  const budget=worst*days;                  // worst-case chain × days (rule: the chase must be completable)
-  const tiers=[0.35,0.7,0.95].map((f,i)=>({tierUid:`tier.bank.${i+1}`,
-    tokensRequired:Math.max(i+1,Math.floor(budget*f)),
-    reward:{bonusCash:[0.5,1.0,2.0][i]}}));
-  for(let i=1;i<tiers.length;i++)if(tiers[i].tokensRequired<=tiers[i-1].tokensRequired)
-    tiers[i].tokensRequired=tiers[i-1].tokensRequired+1;
+  const tiers=bankTiers(days).map((t,i)=>({tierUid:`tier.bank.${i+1}`,
+    tokensRequired:t.tokens,reward:{bonusCash:t.cash}}));
   const today=new Date();
   const ymd=today.getFullYear()+String(today.getMonth()+1).padStart(2,'0')+String(today.getDate()).padStart(2,'0');
   const bundle={version:4,bundleUid:`bnd.calendric.${ymd}.02`,bundleType:'calendric',
@@ -1890,6 +1960,13 @@ document.getElementById('bankGen').onclick=()=>{
 document.getElementById('bankClear').onclick=()=>{ST.bank=[];save();renderBank();};
 document.getElementById('bankExport').onclick=exportRandomBundle;
 document.getElementById('bankMpd').onchange=renderBank;
+document.getElementById('bankDays').onchange=renderBank;
+document.getElementById('bankClusters').addEventListener('change',e=>{
+  const t=e.target,d=t.dataset,cs=clustersOf();
+  if(d.cln!=null)cs[+d.cln].name=t.value;
+  else if(d.clm!=null)cs[+d.clm].mpd=Math.max(1,Math.min(40,+t.value||3));
+  else return;
+  save();renderClusters();});
 document.getElementById('bankCards').addEventListener('click',e=>{
   const b=e.target.closest('[data-brm]');if(!b)return;
   bankOf().splice(+b.dataset.brm,1);save();renderBank();});
