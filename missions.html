@@ -1934,7 +1934,7 @@ function sizeTargetDue(chain,j,due,M){
   const p1=Math.min(0.97,Math.pow(pAll,1/5));
   const r=R[MI[chain.missions[j].type]];
   let T=1;while(T<99&&poisAtLeast(r*w,T+1)>=p1)T++;
-  return Math.max(1,Math.min(bankCaps().t,T));
+  return {t:Math.max(1,Math.min(bankCaps().t,T)),raw:Math.max(1,T)};
 }
 function bankPlanHTML(c,ci,M){               // per-match progress table — the Studio deck-plan, pool-average edition
   const fake={missions:c.missions,deckCount:M,decks:[]};
@@ -2167,14 +2167,26 @@ document.getElementById('bankCards').addEventListener('change',e=>{
     const M2=Math.max(1,+document.getElementById('bankMpd').value||6);
     const m=bank[i].missions[j];
     m.type=t.value;
-    m.target=m.due?sizeTargetDue(bank[i],j,m.due,M2):sizeTarget(t.value,M2);
+    m.target=m.due?sizeTargetDue(bank[i],j,m.due,M2).t:sizeTarget(t.value,M2);
     m.tokens=Math.min(bankCaps().k,tokDefault(poolRates()[MI[t.value]]));}
   else if(d.bdm!=null){const[i,j]=d.bdm.split(':').map(Number);
     const M2=Math.max(1,+document.getElementById('bankMpd').value||6);
     const m=bank[i].missions[j];
-    const v=+t.value;
-    if(v>0){m.due=Math.min(M2,v);m.target=sizeTargetDue(bank[i],j,m.due,M2);}
-    else{m.due=undefined;m.target=sizeTarget(m.type,M2);}}
+    const v=+t.value,oldT=m.target,err2=document.getElementById('err');
+    if(v>0){
+      m.due=Math.min(M2,v);
+      const s=sizeTargetDue(bank[i],j,m.due,M2);
+      m.target=s.t;
+      if(s.raw>s.t)
+        err2.innerHTML=`<b>${M29[MI[m.type]][1]}</b>: to stay challenging by m${m.due} it needs ×${s.raw}, but <b>max target caps it at ${s.t}</b> — raise max target (top bar) or pick a rarer type.`;
+      else if(s.t===oldT)
+        err2.innerHTML=`<span class="ok"><b>${M29[MI[m.type]][1]}</b>: target ×${oldT} already matches finishing by m${m.due} — nothing to change.</span>`;
+      else
+        err2.innerHTML=`<span class="ok"><b>${M29[MI[m.type]][1]}</b>: target resized ×${oldT} → ×${s.t} to finish by m${m.due}.</span>`;
+    }else{
+      m.due=undefined;m.target=sizeTarget(m.type,M2);
+      err2.innerHTML=`<span class="ok"><b>${M29[MI[m.type]][1]}</b>: due cleared — target back to the day's default pacing (×${m.target}).</span>`;
+    }}
   else if(d.bt!=null){const[i,j]=d.bt.split(':').map(Number);
     bank[i].missions[j].target=Math.max(1,Math.min(bankCaps().t,+t.value||1));}
   else if(d.btk!=null){const[i,j]=d.btk.split(':').map(Number);
