@@ -1752,6 +1752,9 @@ document.getElementById('shareBtn').onclick=async()=>{
    the page polls every 4s and pushes local edits after a 1.2s debounce. */
 const LIVE={id:null,v:0,by:'',timer:null,pushT:null,busy:false,last:''};
 const LIVE_API='https://jsonblob.com/api/jsonBlob';
+// the team's shared room — everyone who opens the page joins it automatically
+// (open a different room via #room=<id>, or leave with the ✕ on the chip)
+const DEFAULT_ROOM='019feb0f-0676-7894-8c4c-4b80a8d884ed';
 function liveName(){
   let n=null;
   try{n=localStorage.getItem('studio_name');}catch(e){}
@@ -1772,6 +1775,7 @@ const liveEnvelope=()=>({format:'studio-live',v:LIVE.v,by:liveName(),
 function applyRemote(j){
   LIVE.busy=true;
   try{
+    const b=document.getElementById('planBanner');if(b)b.remove();
     ST=j.state;LIVE.v=j.v;LIVE.by=j.by||'';LIVE.last=JSON.stringify(ST);
     try{localStorage.setItem(SKEY,LIVE.last);}catch(e){}
     const se=document.getElementById('slotsN');if(se)se.value=ST.slots||3;
@@ -1894,7 +1898,8 @@ function loadDefaultPlan(){
 })();
 render();
 renderLive();
-(function(){const m=location.hash.match(/room=([A-Za-z0-9\-]+)/);if(m)liveJoin(m[1]);})();
+(function(){const m=location.hash.match(/room=([A-Za-z0-9\-]+)/);
+  liveJoin(m?m[1]:DEFAULT_ROOM);})();
 </script>
 </body>
 </html>
