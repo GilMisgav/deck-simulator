@@ -1807,6 +1807,11 @@ function genChain(M,pAll,used){
     // variety: at most 2 per category within the day…
     const catOk=avail.filter(x=>(catCount[x.cat]||0)<2);
     if(catOk.length)avail=catOk;
+    // a tight max-target cap can turn commons into freebies (P≈100% no matter
+    // what) — prefer types the cap still lets us pace
+    const capT3=bankCaps().t;
+    const pace=avail.filter(x=>poisAtLeast(x.r*w,capT3)<0.995);
+    if(pace.length)avail=pace;
     // …and across days: always take one of the LEAST-used types (ties random)
     const minU=Math.min(...avail.map(x=>used.get(x.t)||0));
     const least=avail.filter(x=>(used.get(x.t)||0)===minU);
@@ -1981,6 +1986,8 @@ function renderBank(){
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
         <span class="dtag">DAY ${ci+1}</span>
         <span class="pb ${pcls(ev.pAll)}" title="chance all 5 complete within ${M} matches on random decks">${ptx(ev.pAll)}</span>
+        ${(()=>{const want=+document.getElementById('bankDiff').value||0.65;
+          return ev.pAll>want+0.15?`<span style="color:var(--gold);cursor:help" title="much easier than the requested ${(100*want).toFixed(0)}% — the max-target cap (or very high matches/day) stops the tuner from hardening these missions. Raise max target, lower matches/day, or swap in rarer types.">⚠ easy</span>`:'';})()}
         <span class="dim" style="font-family:var(--mono);font-size:11px" title="expected / max tokens">${ev.tokExp.toFixed(0)} / ${ev.tokMax}t</span>
         <span style="margin-left:auto;display:flex;gap:6px">
           <button class="x" data-bmp="${ci}" title="show how every match progresses this day's missions">${BANKPLAN===ci?'▴ matches':'▾ matches'}</button>
