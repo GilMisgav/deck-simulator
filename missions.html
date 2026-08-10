@@ -176,7 +176,6 @@
   <input type="number" id="stakeN" value="1" min="0.05" step="0.05" style="width:64px">
   <button class="primary" id="fitAll">Fit decks</button>
   <button id="exportBtn">Export bundle</button>
-  <button id="exportJson" title="download the full Studio configuration (days, missions, dues, decks, chests, ranges, overrides) as a machine-readable JSON">Plan JSON</button>
   <button id="shareBtn" title="Copy a link that opens this exact plan (days, targets, decks, chests)">Share link</button>
   <button id="clearAll">Clear</button>
   <span class="lbl" style="margin-left:14px">Suits</span>
@@ -1397,36 +1396,6 @@ function exportBundle(){
   err.innerHTML=`<span class="ok">Bundle exported — verify with:</span> python3 validate_bundle.py --uids ${aEl.download}`;
 }
 
-function exportPlanJSON(){                 // the full Studio configuration, machine-readable
-  const plan={
-    format:'mission-studio-plan',
-    version:1,
-    exportedAt:new Date().toISOString(),
-    suitModel:SUIT_MODEL,
-    slots:ST.slots||3,
-    stake:ST.stake||1,
-    days:ST.days.map((d,i)=>({
-      day:i+1,
-      finishInDecks:d.deckCount||3,
-      matches:d.matches||d.deckCount||3,
-      funRange:(d.funMin!=null||d.funMax!=null)?{min:d.funMin??null,max:d.funMax??null}:null,
-      rtpRange:(d.rtpMin!=null||d.rtpMax!=null)?{min:d.rtpMin??null,max:d.rtpMax??null}:null,
-      missions:(d.missions||[]).map((m,j)=>({order:j+1,type:m.type,target:m.target,
-        tokens:m.tokens,dueDeck:m.due??null})),
-      decks:(d.decks||[]).map(String)})),
-    chests:[...ST.chests].sort((a,b)=>a.tokens-b.tokens).map((c,i)=>({n:i+1,
-      tokens:c.tokens,bonusCash:+c.cash,
-      anchor:c.by?{by:c.by,at:c.at}:null})),
-    funOverrides:ST.funOverrides||{},
-    rtpOverrides:ST.rtpOverrides||{}};
-  const blob=new Blob([JSON.stringify(plan,null,2)+'\n'],{type:'application/json'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='mission_studio_plan.json';
-  a.click();URL.revokeObjectURL(a.href);
-  document.getElementById('err').innerHTML='<span class="ok">Plan configuration exported as JSON.</span>';
-}
-
 /* ═══════════════ wiring ═══════════════ */
 function newDay(){return {missions:[],deckCount:+document.getElementById('decksPerDay').value||3,decks:[]};}
 const slotsEl=document.getElementById('slotsN');
@@ -1446,7 +1415,6 @@ document.getElementById('fitAll').onclick=()=>{
   ST.days.forEach(d=>{fitDay(d,used);(d.decks||[]).forEach(id=>used.add(String(id)));});
   render();};
 document.getElementById('exportBtn').onclick=exportBundle;
-document.getElementById('exportJson').onclick=exportPlanJSON;
 document.getElementById('dayChips').addEventListener('click',e=>{
   const b=e.target.closest('[data-sel]');if(b){ST.active=+b.dataset.sel;render();}});
 document.getElementById('bank').addEventListener('click',e=>{
