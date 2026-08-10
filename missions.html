@@ -1923,18 +1923,27 @@ function sizeTarget(type,M){                 // auto target: same lane-window pa
   return Math.max(1,Math.min(bankCaps().t,T));
 }
 function sizeTargetDue(chain,j,due,M){
-  // target so the mission typically completes by match `due`, given when it
-  // actually enters a slot on the typical path
+  // target so the mission's TYPICAL completion lands ON the due match (like
+  // the Studio's due-deck): seed T = rate × window from its slot entry, then
+  // nudge against the real fluid timeline until ✓ falls on `due`
   const R=poolRates();
-  const fake={missions:chain.missions,deckCount:M,decks:[]};
-  const tl=timelineForDay(fake,'per');
-  const sv=tl.ms[j].serve!=null?Math.floor(tl.ms[j].serve):0;
-  const w=Math.max(0.4,due-sv);
-  const pAll=+document.getElementById('bankDiff').value||0.65;
-  const p1=Math.min(0.97,Math.pow(pAll,1/5));
   const r=R[MI[chain.missions[j].type]];
-  let T=1;while(T<99&&poisAtLeast(r*w,T+1)>=p1)T++;
-  return {t:Math.max(1,Math.min(bankCaps().t,T)),raw:Math.max(1,T)};
+  const caps=bankCaps().t;
+  const orig=chain.missions[j].target;
+  let tl=timelineForDay({missions:chain.missions,deckCount:M,decks:[]},'per');
+  const sv=tl.ms[j].serve!=null?tl.ms[j].serve:0;
+  let T=Math.max(1,Math.round(r*Math.max(0.3,due-sv)));
+  for(let it=0;it<8;it++){
+    chain.missions[j].target=Math.max(1,Math.min(caps,T));
+    tl=timelineForDay({missions:chain.missions,deckCount:M,decks:[]},'per');
+    const dn=tl.ms[j].done;
+    const doneM=dn!=null?Math.ceil(dn):M+2;
+    if(doneM===due)break;
+    if(doneM>due){if(T<=1)break;T--;}
+    else{if(T>=caps)break;T++;}
+  }
+  chain.missions[j].target=orig;             // the caller assigns the result
+  return {t:Math.max(1,Math.min(caps,T)),raw:Math.max(1,T)};
 }
 function bankPlanHTML(c,ci,M){               // per-match progress table — the Studio deck-plan, pool-average edition
   const fake={missions:c.missions,deckCount:M,decks:[]};
@@ -2182,7 +2191,7 @@ document.getElementById('bankCards').addEventListener('change',e=>{
       else if(s.t===oldT)
         err2.innerHTML=`<span class="ok"><b>${M29[MI[m.type]][1]}</b>: target ×${oldT} already matches finishing by m${m.due} — nothing to change.</span>`;
       else
-        err2.innerHTML=`<span class="ok"><b>${M29[MI[m.type]][1]}</b>: target resized ×${oldT} → ×${s.t} to finish by m${m.due}.</span>`;
+        err2.innerHTML=`<span class="ok"><b>${M29[MI[m.type]][1]}</b>: target resized ×${oldT} → ×${s.t} — typical completion lands on m${m.due} (check the match plan).</span>`;
     }else{
       m.due=undefined;m.target=sizeTarget(m.type,M2);
       err2.innerHTML=`<span class="ok"><b>${M29[MI[m.type]][1]}</b>: due cleared — target back to the day's default pacing (×${m.target}).</span>`;
