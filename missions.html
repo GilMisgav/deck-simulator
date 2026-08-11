@@ -186,7 +186,7 @@
 </div>
 <div class="err" id="err"></div>
 
-<h2>Bank <small>click a mission to add it to the selected day · rate = expected events per match</small></h2>
+<h2>Bank <small>click a mission to add it to the <b id="bankTarget">selected day</b> · rate = expected events per match · or use "+ mission" inside a day card</small></h2>
 <div class="bank" id="bank"></div>
 
 <h2>Days <small>target &amp; tokens are editable · P = chance to complete with the fitted decks</small></h2>
@@ -1136,6 +1136,8 @@ function render(){
      <span class="n">${(d.missions||[]).length}·${ptx(dayStats(d).all)}</span></button>`).join('')
     ||'<span class="dim" style="font-size:12px">no days — add one</span>';
   // bank
+  const bt=document.getElementById('bankTarget');
+  if(bt)bt.textContent=ST.days.length?('Day '+(ST.active+1)):'selected day';
   const CATS=['Opening','21+3','Four cards','Gameplay','Dealer'];
   const act=ST.days[ST.active];
   document.getElementById('bank').innerHTML=CATS.map(cat=>
@@ -1244,6 +1246,16 @@ function render(){
         <th title="tokens ÷ ~matches — reward per match of effort">Tok/Effort</th><th>P</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table>`
         :`<div class="dim" style="font-size:12px;padding:4px 0">empty — click missions in the bank</div>`}
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+        <span class="lbl">add to this day</span>
+        <select data-addm="${di}" style="max-width:220px"${(day.missions||[]).length>=5?' disabled title="a day holds at most 5 missions (dailyCap)"':''}>
+          <option value="">${(day.missions||[]).length>=5?'day is full (5/5)':'+ mission…'}</option>
+          ${M29.map((mm,ii)=>({mm,ii}))
+            .filter(x2=>poolRates()[x2.ii]>0&&!(day.missions||[]).some(m=>m.type===x2.mm[0]))
+            .map(x2=>`<option value="${x2.mm[0]}">${x2.mm[1]} · ${poolRates()[x2.ii].toFixed(2)}/match</option>`).join('')}
+        </select>
+        <span class="dim" style="font-size:11px">${(day.missions||[]).length}/5 missions</span>
+      </div>
       ${deckPlanHTML(day,di)}
     </div>`;}).join('')
     +`<button class="adddaybig" data-addday title="add another day to the plan">+ Add day</button>`;
@@ -1646,7 +1658,17 @@ document.getElementById('days').addEventListener('click',e=>{
   render();});
 document.getElementById('days').addEventListener('change',e=>{
   const t=e.target,d=t.dataset;
-  if(d.sty!=null){const[i,j]=d.sty.split(':').map(Number);
+  if(d.addm!=null){const i=+d.addm;
+    if(!t.value)return;
+    const day=ST.days[i],type=t.value;
+    const err3=document.getElementById('err');
+    if((day.missions||[]).length>=5){err3.textContent='A day holds at most 5 missions (dailyCap).';t.value='';return;}
+    if(day.missions.some(m=>m.type===type)){err3.textContent='That type is already in this day.';t.value='';return;}
+    const rate=poolRates()[MI[type]];
+    day.missions.push({type,target:Math.max(1,Math.round(rate*(day.deckCount||3)*0.75))||1,
+      tokens:tokDefault(rate)});
+    err3.innerHTML=`<span class="ok">Added <b>${M29[MI[type]][1]}</b> to Day ${i+1} (${day.missions.length}/5). The fit is stale — use <b>≈ adjust</b>.</span>`;}
+  else if(d.sty!=null){const[i,j]=d.sty.split(':').map(Number);
     const day=ST.days[i],m=day.missions[j];
     if(day.missions.some((mm,jj)=>jj!==j&&mm.type===t.value)){
       document.getElementById('err').textContent='That mission type is already in this day (no duplicate types per chain).';
