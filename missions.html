@@ -947,35 +947,54 @@ function fitDay(day,usedElsewhere){
     }
   }
   // refinement: local swaps against the actual slot timeline. The greedy pass
-  // can't revisit early picks, so due misses accumulate — two sweeps of
+  // can't revisit early picks, so due misses accumulate — sweeps of
   // best-swap-per-position fix most of them.
-  if(chosen.length){
-    const pen=constraintPenFn(day);
-    const penOf=new Map();
-    const penFor=id=>{if(!pen)return 0;
-      if(!penOf.has(id))penOf.set(id,pen(BYID.get(id))||0);
-      return penOf.get(id);};
-    const cand=pool.map(d=>String(d.deck_id))
-      .filter(id=>!used.has(id)&&BYID.has(id));
-    const tot=list=>planLoss(ms,list,slots)+list.reduce((a,id)=>a+penFor(id),0);
-    let bestL=tot(chosen);
-    for(let sweep=0;sweep<3;sweep++){
-      let improved=false;
-      for(let k=0;k<chosen.length;k++){
-        let bestId=chosen[k],bl=bestL;
-        for(const id of cand){
-          if(chosen.includes(id))continue;
-          const trial=chosen.slice();trial[k]=id;
-          const L=tot(trial);
-          if(L<bl-1e-9){bl=L;bestId=id;}
-        }
-        if(bestId!==chosen[k]){chosen[k]=bestId;bestL=bl;improved=true;}
-      }
-      if(!improved)break;
-    }
-  }
+  if(chosen.length)refineSwaps(day,chosen,pool,used);
   day.decks=chosen;
   day.fitSig=daySig(day);          // remember what the decks were fitted FOR
+}
+function refineSwaps(day,chosen,pool,used,orig){
+  const ms=day.missions||[];
+  const slots=Math.max(1,ST.slots||3);
+  const pen=constraintPenFn(day);
+  const penOf=new Map();
+  const penFor=id=>{if(!pen)return 0;
+    if(!penOf.has(id))penOf.set(id,pen(BYID.get(id))||0);
+    return penOf.get(id);};
+  const cand=pool.map(d=>String(d.deck_id))
+    .filter(id=>!used.has(id)&&BYID.has(id));
+  // stickiness: in adjust mode every deviation from the original decks costs a
+  // little, so a deck is swapped only when it buys a real improvement
+  const tot=list=>planLoss(ms,list,slots)+list.reduce((a,id)=>a+penFor(id),0)
+    +(orig?list.reduce((a,id,i)=>a+(id!==orig[i]?0.6:0),0):0);
+  let bestL=tot(chosen);
+  for(let sweep=0;sweep<3;sweep++){
+    let improved=false;
+    for(let k=0;k<chosen.length;k++){
+      let bestId=chosen[k],bl=bestL;
+      for(const id of cand){
+        if(chosen.includes(id))continue;
+        const trial=chosen.slice();trial[k]=id;
+        const L=tot(trial);
+        if(L<bl-1e-9){bl=L;bestId=id;}
+      }
+      if(bestId!==chosen[k]){chosen[k]=bestId;bestL=bl;improved=true;}
+    }
+    if(!improved)break;
+  }
+  return chosen;
+}
+// light refit: KEEP the fitted decks, swap only what the changed missions need
+function refitLight(day){
+  const ms=day.missions||[];if(!ms.length)return 0;
+  if(!(day.decks||[]).length||(day.deckCount||3)!==day.decks.length){fitDay(day);return -1;}
+  const used=new Set(ST.days.filter(x=>x!==day).flatMap(x=>x.decks||[]).map(String));
+  const before=day.decks.map(String);
+  const chosen=refineSwaps(day,before.slice(),fitCandidates(day),used,before);
+  const changed=chosen.filter((id,i)=>id!==before[i]).length;
+  day.decks=chosen;
+  day.fitSig=daySig(day);
+  return changed;
 }
 const daySig=day=>(day.missions||[]).map(m=>m.type+':'+m.target+':'+(m.due||0)).join('|')
   +'#'+(day.deckCount||3)+'@'+SUIT_MODEL+'&'+(ST.slots||3)
@@ -1195,7 +1214,9 @@ function render(){
         <span class="lbl">all missions</span><span class="pb ${pcls(s.all)}">${ptx(s.all)}</span>
         ${(day.decks||[]).length&&day.fitSig!==daySig(day)
           ?`<button class="pb pr" style="border:none;cursor:pointer" data-refit="${di}"
-             title="Missions or targets changed after the decks were fitted — the decks aren't optimised for the current list. Click to refit.">decks stale — refit</button>`
+             title="full refit — re-pick all ${(day.decks||[]).length} decks for the current missions">decks stale — refit</button>
+           <button class="pb pm" style="border:none;cursor:pointer" data-refitl="${di}"
+             title="ADJUST: keep the fitted decks and swap only the few needed for what you just changed — the rest of the day stays put">≈ adjust</button>`
           :(day.decks||[]).length?'':`<button data-refit="${di}">Fit decks</button>`}
         <span class="lbl">tokens</span><span style="font-family:var(--mono);font-size:12px"
           title="expected tokens / max tokens · per deck = expected ÷ ${day.deckCount||3} decks">
@@ -1594,6 +1615,13 @@ document.getElementById('days').addEventListener('click',e=>{
     return;
   }
   if(d.addday!=null){ST.days.push(newDay());ST.active=ST.days.length-1;render();return;}
+  if(d.refitl!=null){
+    const day=ST.days[+d.refitl];
+    const n=refitLight(day);
+    document.getElementById('err').innerHTML=n<0
+      ?'<span class="ok">Deck count changed — did a full refit instead.</span>'
+      :`<span class="ok">Adjusted: ${n} of ${(day.decks||[]).length} decks swapped — the rest stayed exactly where they were.</span>`;
+    render();return;}
   if(d.refit!=null){const i=+d.refit;
     fitDay(ST.days[i],new Set(ST.days.filter(x=>x!==ST.days[i])
       .flatMap(x=>x.decks||[]).map(String)));render();return;}
