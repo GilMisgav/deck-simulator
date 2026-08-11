@@ -298,13 +298,11 @@
     <div class="bar" style="margin:6px 0 0"><button id="progChestAdd">+ chest</button></div>
   </div>
 
-  <h2>Economics <small>what every reward costs against the effort that funds it — leagues framework (β/φ)</small></h2>
+  <h2>Economics <small>what every reward costs against the effort that funds it — missions only (β/φ)</small></h2>
   <div class="panel">
     <div class="bar" style="margin:0 0 10px">
       <span class="lbl" title="share of this segment's GGR you are willing to spend on missions">φ missions %</span>
       <input type="number" id="ecoPhiM" value="15" min="1" max="60" style="width:56px">
-      <span class="lbl" title="what leagues already consumes of the same margin — sets the shared ceiling">φ leagues %</span>
-      <input type="number" id="ecoPhiL" value="20" min="0" max="60" style="width:56px">
       <span class="lbl" title="real cost per $1 of bonus cash — bonus can only enter rooms, so ≈0.90">β</span>
       <input type="number" id="ecoBeta" value="0.90" min="0.1" max="1" step="0.05" style="width:60px">
       <span class="lbl" title="nominal room RTP">R</span>
@@ -2050,7 +2048,7 @@ function renderEcon(){
   const bank=bankOf();
   if(!bank.length){tb.innerHTML='';roll.innerHTML='<div class="dim" style="font-size:12px">build chains first</div>';sum.textContent='';return;}
   const e=ecoOf();
-  const phiM=Math.max(0.01,(+e.phiM||15)/100),phiL=Math.max(0,(+e.phiL||0)/100);
+  const phiM=Math.max(0.01,(+e.phiM||15)/100),phiL=0;   // missions-only view — leagues are judged elsewhere
   const beta=+e.beta||0.90,R=+e.R||0.90;
   const stake=ST.stake||1;
   const perMatchLoss=stake*(1-R);
@@ -2102,13 +2100,13 @@ function renderEcon(){
        ['Expected real cost','$'+totExp.toFixed(2),'payout × β'],
        ['φ missions actual',(100*phiAct).toFixed(1)+'%','real cost ÷ run GGR — compare to your φ target'],
        ['Loss ratio',lossRatio?lossRatio.toFixed(1)+'×':'—','the player loses $'+(lossRatio?lossRatio.toFixed(2):'—')+' per $1 returned — the sentence to sanity-check'],
-       ['Effective RTP',(100*effRTP).toFixed(1)+'%','1 − (1−R)(1 − φ_leagues − φ_missions) = with leagues at '+(100*phiL).toFixed(0)+'%'],
+       ['Effective RTP',(100*effRTP).toFixed(1)+'%','missions only: 1 − (1−R)(1 − φ_missions). Leagues and the shared envelope are judged elsewhere'],
        ['Play time',hours.toFixed(1)+'h','at 4 min/match — the feasibility budget']]
       .map(([l,v,t],i)=>`<div style="background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:7px 10px" title="${t}">
         <div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">${l}</div>
         <div style="font-family:var(--mono);font-size:14px;font-weight:700;margin-top:2px;${i===5?'color:'+cls:''}">${v}</div></div>`).join('')}
   </div>`;
-  sum.innerHTML=`φ total <b style="color:${cls}">${(100*phiTot).toFixed(1)}%</b> of margin${phiTot>=1?' — <b style="color:var(--lose)">RTP 100%+, the room pays out everything</b>':''}`;
+  sum.innerHTML=`φ missions <b style="color:${cls}">${(100*phiAct).toFixed(1)}%</b> of margin (missions-only view)${phiAct>=1?' — <b style="color:var(--lose)">RTP 100%+, the room pays out everything</b>':''}`;
 }
 const progsOf=()=>{if(!Array.isArray(ST.programs))ST.programs=[];return ST.programs;};
 function renderProgs(){
@@ -2271,7 +2269,7 @@ capK.onchange=()=>{ST.bankCaps=ST.bankCaps||{};ST.bankCaps.k=+capK.value>0?+capK
   const e=ecoOf();
   const bind=(id,key,mul)=>{const el=document.getElementById(id);
     el.value=e[key];el.onchange=()=>{e[key]=+el.value||e[key];save();renderEcon();};};
-  bind('ecoPhiM','phiM');bind('ecoPhiL','phiL');bind('ecoBeta','beta');bind('ecoR','R');
+  bind('ecoPhiM','phiM');bind('ecoBeta','beta');bind('ecoR','R');
   const st=document.getElementById('ecoStake');
   st.value=ST.stake||1;
   st.onchange=()=>{ST.stake=Math.max(0.05,+st.value||1);
