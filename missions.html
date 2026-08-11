@@ -1171,7 +1171,9 @@ function render(){
         ?`<span class="tag open" title="open from the first match">open</span>`
         :`<span class="tag q" title="queued — enters only when a mission above completes, and starts counting from that moment">Q${j-slots+1}</span>`;
       return `<tr>
-        <td>${slot} ${M29[MI[x.m.type]][1]}</td>
+        <td>${slot} <select data-sty="${di}:${j}" title="swap the mission type — target and tokens re-default, the fit goes stale (use ≈ adjust)" style="max-width:200px">${
+          M29.map((mm,ii)=>({mm,ii})).filter(x2=>poolRates()[x2.ii]>0||x2.mm[0]===x.m.type)
+            .map(x2=>`<option value="${x2.mm[0]}"${x2.mm[0]===x.m.type?' selected':''}>${x2.mm[1]}</option>`).join('')}</select></td>
         <td><input type="number" min="1" value="${x.m.target}" data-t="${di}:${j}"></td>
         <td><input type="number" min="1" value="${x.m.tokens}" data-k="${di}:${j}"></td>
         <td><input type="number" min="0" step="0.05" value="${x.m.cash??''}" placeholder="—" data-bc="${di}:${j}" style="width:64px" title="optional real bonus cash paid when the mission is claimed — exported as reward.bonusCash (blank = token-only mission)"></td>
@@ -1643,7 +1645,17 @@ document.getElementById('days').addEventListener('click',e=>{
   render();});
 document.getElementById('days').addEventListener('change',e=>{
   const t=e.target,d=t.dataset;
-  if(d.t!=null){const[i,j]=d.t.split(':').map(Number);ST.days[i].missions[j].target=Math.max(1,+t.value||1);}
+  if(d.sty!=null){const[i,j]=d.sty.split(':').map(Number);
+    const day=ST.days[i],m=day.missions[j];
+    if(day.missions.some((mm,jj)=>jj!==j&&mm.type===t.value)){
+      document.getElementById('err').textContent='That mission type is already in this day (no duplicate types per chain).';
+      t.value=m.type;return;}
+    const rate=poolRates()[MI[t.value]];
+    m.type=t.value;
+    m.target=Math.max(1,Math.round(rate*(day.deckCount||3)*0.75))||1;
+    m.tokens=tokDefault(rate);
+    document.getElementById('err').innerHTML=`<span class="ok">Swapped to <b>${M29[MI[t.value]][1]}</b> — target defaulted to ×${m.target}. The fit is stale: use <b>≈ adjust</b> to swap in the right decks.</span>`;}
+  else if(d.t!=null){const[i,j]=d.t.split(':').map(Number);ST.days[i].missions[j].target=Math.max(1,+t.value||1);}
   else if(d.due!=null){const[i,j]=d.due.split(':').map(Number);
     const v=+t.value;ST.days[i].missions[j].due=v>0?v:undefined;}
   else if(d.k!=null){const[i,j]=d.k.split(':').map(Number);ST.days[i].missions[j].tokens=Math.max(1,+t.value||1);}
