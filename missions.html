@@ -679,7 +679,8 @@ const SKEY='mission_studio';
 let ST=(()=>{try{const s=JSON.parse(localStorage.getItem(SKEY));
   if(s&&Array.isArray(s.days))return s;}catch(e){}
   return {days:[],chests:[],active:0};})();
-const save=()=>{try{localStorage.setItem(SKEY,JSON.stringify(ST));}catch(e){}
+const save=()=>{ST._t=Date.now();
+  try{localStorage.setItem(SKEY,JSON.stringify(ST));}catch(e){}
   if(typeof livePush==='function')livePush();};
 const tokDefault=rate=>rate>=1.5?5:rate>=0.3?10:20;
 
@@ -2438,7 +2439,7 @@ const LIVE={id:null,v:0,by:'',timer:null,pushT:null,busy:false,last:''};
 const LIVE_API='https://jsonblob.com/api/jsonBlob';
 // the team's shared room — everyone who opens the page joins it automatically
 // (open a different room via #room=<id>, or leave with the ✕ on the chip)
-const DEFAULT_ROOM='019feb0f-0676-7894-8c4c-4b80a8d884ed';
+const DEFAULT_ROOM='019ff09a-56cb-7af3-bb50-e01979000049';
 function liveName(){
   let n=null;
   try{n=localStorage.getItem('studio_name');}catch(e){}
@@ -2492,10 +2493,25 @@ async function liveJoin(id){
     const j=await r.json();
     if(!j||j.format!=='studio-live')throw new Error('not a studio room');
     LIVE.id=id;
-    applyRemote(j);
-    liveLoop();renderLive();
-    err.innerHTML='<span class="ok">Joined the live room — you see everyone\'s changes and they see yours.</span>';
-  }catch(e){err.textContent='Could not join the live room ('+e.message+').';}
+    // guard: never let an older / emptier room state clobber local work
+    const localNewer=ST._t&&j.state&&j.state._t&&ST._t>j.state._t;
+    const localRicher=(((ST.programs||[]).length)||((ST.bank||[]).length))
+      &&!((j.state.programs||[]).length)&&!((j.state.bank||[]).length);
+    if(localNewer||localRicher){
+      LIVE.v=j.v;LIVE.last='';
+      liveLoop();renderLive();
+      livePush();                            // publish OUR state into the room
+      err.innerHTML='<span class="ok">Joined the live room — your local work was newer and was pushed to it.</span>';
+    }else{
+      applyRemote(j);
+      liveLoop();renderLive();
+      err.innerHTML='<span class="ok">Joined the live room — you see everyone\'s changes and they see yours.</span>';
+    }
+    return 'ok';
+  }catch(e){
+    err.textContent='Could not join the live room ('+e.message+').';
+    return /404/.test(String(e.message))?'gone':'error';
+  }
 }
 function liveLoop(){
   clearInterval(LIVE.timer);
@@ -2585,9 +2601,19 @@ renderLive();
 (function(){
   const m=location.hash.match(/room=([A-Za-z0-9\-]+)/);
   const target=m?m[1]:DEFAULT_ROOM;
-  let tries=0;
+  let tries=0,healed=false;
   const go=async()=>{                       // retry: jsonblob rate-limits bursts (HTTP 429)
-    await liveJoin(target);
+    const res=await liveJoin(target);
+    if(res==='gone'&&!healed&&target===DEFAULT_ROOM){
+      // the free store purged the shared room — create a fresh one from the
+      // local state so nothing is lost, and surface the new link to share
+      healed=true;
+      await liveStart();
+      const err=document.getElementById('err');
+      if(LIVE.id)err.innerHTML='<b style="color:var(--gold)">The shared room was purged by the free store.</b> '
+        +'A fresh one was created from this browser\'s state — share the new link (⧉ on the LIVE chip) with the team.';
+      return;
+    }
     if(!LIVE.id&&++tries<8)setTimeout(go,15000);
   };
   go();
