@@ -294,6 +294,34 @@
     <div class="bar" style="margin:6px 0 0"><button id="progChestAdd">+ chest</button></div>
   </div>
 
+  <h2>Economics <small>what every reward costs against the effort that funds it — leagues framework (β/φ)</small></h2>
+  <div class="panel">
+    <div class="bar" style="margin:0 0 10px">
+      <span class="lbl" title="share of this segment's GGR you are willing to spend on missions">φ missions %</span>
+      <input type="number" id="ecoPhiM" value="15" min="1" max="60" style="width:56px">
+      <span class="lbl" title="what leagues already consumes of the same margin — sets the shared ceiling">φ leagues %</span>
+      <input type="number" id="ecoPhiL" value="20" min="0" max="60" style="width:56px">
+      <span class="lbl" title="real cost per $1 of bonus cash — bonus can only enter rooms, so ≈0.90">β</span>
+      <input type="number" id="ecoBeta" value="0.90" min="0.1" max="1" step="0.05" style="width:60px">
+      <span class="lbl" title="nominal room RTP">R</span>
+      <input type="number" id="ecoR" value="0.90" min="0.5" max="0.99" step="0.01" style="width:60px">
+      <span class="lbl" title="real-money stake per match (shared with the Studio toolbar)">stake $</span>
+      <input type="number" id="ecoStake" value="1" min="0.05" step="0.05" style="width:64px">
+      <span id="ecoSummary" style="margin-left:auto;font-family:var(--mono);font-size:11.5px"></span>
+    </div>
+    <div id="ecoRoll" style="margin-bottom:10px"></div>
+    <table id="ecoTbl" style="max-width:1100px"><thead><tr>
+      <th>Mission</th>
+      <th title="bonusCash + tokens × the chase's $/token">Reward $</th>
+      <th title="reward × β — what it really costs the house">Real cost</th>
+      <th title="reward × β ÷ φ — the loss that must fund it">Required loss</th>
+      <th title="stake × (1−R) × matches until its typical completion">Loss by then</th>
+      <th title="green = the player's loss by completion covers the funding line">Funded</th>
+      <th>P</th>
+      <th title="P × reward × β — what this mission costs in expectation">Exp. cost</th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+
   <h2>Saved programs <small>who gets what — lowest priority that matches wins, narrow first</small></h2>
   <div class="panel">
     <table id="progTbl" style="max-width:1000px"><thead><tr>
@@ -1970,6 +1998,77 @@ function bankPlanHTML(c,ci,M){               // per-match progress table — the
     <th>Tokens</th><th>Day done</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 let BANKPLAN=null;                           // which day's match plan is expanded
+const ecoOf=()=>{
+  if(!ST.econ)ST.econ={phiM:15,phiL:20,beta:0.90,R:0.90};
+  return ST.econ;
+};
+function renderEcon(){
+  const tb=document.querySelector('#ecoTbl tbody'),roll=document.getElementById('ecoRoll'),
+    sum=document.getElementById('ecoSummary');
+  if(!tb)return;
+  const bank=bankOf();
+  if(!bank.length){tb.innerHTML='';roll.innerHTML='<div class="dim" style="font-size:12px">build chains first</div>';sum.textContent='';return;}
+  const e=ecoOf();
+  const phiM=Math.max(0.01,(+e.phiM||15)/100),phiL=Math.max(0,(+e.phiL||0)/100);
+  const beta=+e.beta||0.90,R=+e.R||0.90;
+  const stake=ST.stake||1;
+  const perMatchLoss=stake*(1-R);
+  const mpd=Math.max(1,+document.getElementById('bankMpd').value||6);
+  const r=progResolve(mpd);
+  const tokVal=r.chests.length?r.chests.reduce((a,c)=>a+(+c.cash||0),0)/Math.max(1,r.chests[r.chests.length-1].tokens):0;
+  let rows='',totReward=0,totExp=0;
+  bank.forEach((c,ci)=>{
+    const fake={missions:c.missions,deckCount:mpd,decks:[]};
+    const sim=simDay(fake,mpd),tl=timelineForDay(fake,'per');
+    c.missions.forEach((m,j)=>{
+      const reward=(+m.cash||0)+m.tokens*tokVal;
+      const req=reward*beta/phiM;
+      const dn=tl.ms[j].done;
+      const g=dn!=null?ci*mpd+Math.ceil(dn):null;      // global match of typical completion
+      const lossBy=g!=null?g*perMatchLoss:null;
+      const funded=lossBy!=null&&lossBy>=req;
+      const p=sim.pDone[j];
+      const exp=p*reward*beta;
+      totReward+=reward;totExp+=exp;
+      rows+=`<tr>
+        <td>d${ci+1} · ${M29[MI[m.type]][1]} ×${m.target}</td>
+        <td style="font-family:var(--mono)">$${reward.toFixed(2)}</td>
+        <td style="font-family:var(--mono)" class="dim">$${(reward*beta).toFixed(2)}</td>
+        <td style="font-family:var(--mono)">$${req.toFixed(2)}</td>
+        <td style="font-family:var(--mono)">${lossBy!=null?'$'+lossBy.toFixed(2)+' (m'+g+')':'—'}</td>
+        <td>${funded?'<span class="pb pg">✓</span>':'<span class="pb pr" title="the player has not lost enough by the time this pays — cut the reward, push it later, or raise φ">✗ under</span>'}</td>
+        <td><span class="pb ${pcls(p)}">${ptx(p)}</span></td>
+        <td style="font-family:var(--mono)" class="dim">$${exp.toFixed(2)}</td></tr>`;
+    });
+  });
+  tb.innerHTML=rows;
+  // roll-up: whole run
+  const days=bank.length,totalMatches=days*mpd;
+  const ggr=totalMatches*perMatchLoss;                 // expected loss = the GGR this run generates
+  const chestExp=r.chests.reduce((a,c)=>a+(c.day!=null?+c.cash:0),0);
+  const missionCash=bank.flatMap(c=>c.missions).reduce((a,m)=>a+(+m.cash||0),0);
+  // expected payout: chests reached on the typical path + P-weighted direct cash
+  const expPayout=totExp/beta*0+totExp/beta; // totExp already = Σ P·reward·β → payout = totExp/β
+  const phiAct=ggr>0?(totExp)/ggr:0;                   // real cost ÷ GGR
+  const phiTot=phiAct+phiL;
+  const effRTP=1-(1-R)*(1-phiTot);
+  const lossRatio=phiAct>0?beta/phiAct:null;
+  const hours=totalMatches*4/60;
+  const cls=phiTot>=0.5?'var(--lose)':phiTot>=0.3?'var(--gold)':'var(--win)';
+  roll.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap">
+    ${[['Run GGR','$'+ggr.toFixed(2),'expected player loss over '+days+' days × '+mpd+' matches at $'+stake+' stake, R='+R],
+       ['Expected payout','$'+(totExp/beta).toFixed(2),'P-weighted mission rewards (tokens valued via the chase) '],
+       ['Expected real cost','$'+totExp.toFixed(2),'payout × β'],
+       ['φ missions actual',(100*phiAct).toFixed(1)+'%','real cost ÷ run GGR — compare to your φ target'],
+       ['Loss ratio',lossRatio?lossRatio.toFixed(1)+'×':'—','the player loses $'+(lossRatio?lossRatio.toFixed(2):'—')+' per $1 returned — the sentence to sanity-check'],
+       ['Effective RTP',(100*effRTP).toFixed(1)+'%','1 − (1−R)(1 − φ_leagues − φ_missions) = with leagues at '+(100*phiL).toFixed(0)+'%'],
+       ['Play time',hours.toFixed(1)+'h','at 4 min/match — the feasibility budget']]
+      .map(([l,v,t],i)=>`<div style="background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:7px 10px" title="${t}">
+        <div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">${l}</div>
+        <div style="font-family:var(--mono);font-size:14px;font-weight:700;margin-top:2px;${i===5?'color:'+cls:''}">${v}</div></div>`).join('')}
+  </div>`;
+  sum.innerHTML=`φ total <b style="color:${cls}">${(100*phiTot).toFixed(1)}%</b> of margin${phiTot>=1?' — <b style="color:var(--lose)">RTP 100%+, the room pays out everything</b>':''}`;
+}
 const progsOf=()=>{if(!Array.isArray(ST.programs))ST.programs=[];return ST.programs;};
 function renderProgs(){
   const tb=document.querySelector('#progTbl tbody');if(!tb)return;
@@ -2030,6 +2129,7 @@ function renderBank(){
     </div>`;}).join('')
     :'<div class="dim" style="font-size:12px">no chains yet — pick days and press Build chains</div>';
   renderProgChase();
+  renderEcon();
   renderProgs();
 }
 function saveProgram(){
@@ -2113,6 +2213,17 @@ const capT=document.getElementById('bankCapT'),capK=document.getElementById('ban
 if(ST.bankCaps){capT.value=ST.bankCaps.t||'';capK.value=ST.bankCaps.k||'';}
 capT.onchange=()=>{ST.bankCaps=ST.bankCaps||{};ST.bankCaps.t=+capT.value>0?+capT.value:null;save();};
 capK.onchange=()=>{ST.bankCaps=ST.bankCaps||{};ST.bankCaps.k=+capK.value>0?+capK.value:null;save();};
+(function(){
+  const e=ecoOf();
+  const bind=(id,key,mul)=>{const el=document.getElementById(id);
+    el.value=e[key];el.onchange=()=>{e[key]=+el.value||e[key];save();renderEcon();};};
+  bind('ecoPhiM','phiM');bind('ecoPhiL','phiL');bind('ecoBeta','beta');bind('ecoR','R');
+  const st=document.getElementById('ecoStake');
+  st.value=ST.stake||1;
+  st.onchange=()=>{ST.stake=Math.max(0.05,+st.value||1);
+    const top=document.getElementById('stakeN');if(top)top.value=ST.stake;
+    save();renderEcon();};
+})();
 document.getElementById('progSave').onclick=saveProgram;
 document.getElementById('bankExport').onclick=exportProgramsBundle;
 document.getElementById('bankMpd').onchange=renderBank;
