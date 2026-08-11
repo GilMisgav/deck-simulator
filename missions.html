@@ -281,7 +281,11 @@
     <button id="bankExport" title="one calendric scripted bundle: a config per saved program, a segment per program deciding who gets it">Export programs bundle</button>
     <span class="lbl" id="bankCtx" style="margin-left:auto"></span>
   </div>
-  <p class="note" style="margin-bottom:12px">Pick days → Build chains makes one chain per day, sized on the pool average (random decks). Edit any target / tokens / bonus. Configure the chase bar below, then Save program and set who receives it by segment. Export packs every saved program into one bundle.</p>
+  <div class="bar" style="margin-top:2px">
+    <span class="lbl" title="the Serving config: relative weight per deck tier 0-9, normalised to a distribution — every expectation here is weighted by it">Serving tiers</span>
+    <span id="tierWBox" style="display:inline-flex;gap:4px"></span>
+  </div>
+  <p class="note" style="margin-bottom:12px">Pick days → Build chains makes one chain per day, sized on the SERVING average (the production deck DB, weighted by the tier config above). Edit any target / tokens / bonus. Configure the chase bar below, then Save program and set who receives it by segment. Export packs every saved program into one bundle.</p>
   <div id="bankCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(500px,1fr));gap:12px"></div>
 
   <h2>Chase bar <small>the program's chests — anchor to a day end or set tokens manually</small></h2>
@@ -341,6 +345,7 @@
 </div>
 
 <script>document.write('<script src="data.js?v='+Date.now()+'"><\/script>');</script>
+<script>document.write('<script src="data2.js?v='+Date.now()+'"><\/script>');</script>
 <script>
 'use strict';
 /* ═══════════════ data ═══════════════ */
@@ -348,7 +353,11 @@ const RAW=window.DECK_DATA;
 const IX=Object.fromEntries(RAW.fields.map((f,i)=>[f,i]));
 const DECKS=RAW.rows.map(r=>({deck_id:r[IX.deck_id],cards:r[IX.cards]}));
 const BYID=new Map(DECKS.map(d=>[String(d.deck_id),d]));
-document.getElementById('poolN').textContent=DECKS.length.toLocaleString();
+// serving DB: the decks production actually deals at match start, with explicit
+// suits and a tier field — expectations are weighted by the serving config
+const SDECKS=(typeof SRAW!=='undefined')?SRAW.rows.map(r=>({deck_id:r[0],cards:r[1],suits:r[2],tier:+r[3]})):[];
+const SBYID=new Map(SDECKS.map(d=>[String(d.deck_id),d]));
+document.getElementById('poolN').textContent=DECKS.length.toLocaleString()+' fit · '+SDECKS.length.toLocaleString()+' serving';
 const fmt=n=>n==null?'—':(+n).toLocaleString('en-US');
 
 /* ═══════════════ engine: book strategy + reasonable player ═══════════════ */
@@ -534,9 +543,10 @@ const MI=Object.fromEntries(M29.map((m,i)=>[m[0],i]));
 
 // per-deck expected events per mission (mean over seeded runs, suits re-drawn per run)
 const RCACHE=new Map();
+const SUITIX={H:0,D:1,C:2,S:3};
 function deckRates(deck,runs){
   runs=runs||30;
-  const key=deck.deck_id+'|'+runs+'|'+SUIT_MODEL;
+  const key=deck.deck_id+'|'+runs+'|'+(deck.suits?'X':SUIT_MODEL);
   if(RCACHE.has(key))return RCACHE.get(key);
   const seq=deck.cards.split('');
   const bid=BigInt(deck.deck_id);
@@ -544,7 +554,8 @@ function deckRates(deck,runs){
   const acc=new Array(29).fill(0);
   for(let k=0;k<runs;k++){
     const log=playMatch(seq,reasonable(mulberry32(hashSeed(0x5EED,base,k))));
-    const S=suitMap(seq,mulberry32(hashSeed(0x50175,base,k)));
+    const S=deck.suits?[...deck.suits].map(ch=>SUITIX[ch])
+      :suitMap(seq,mulberry32(hashSeed(0x50175,base,k)));
     for(const r of log){
       const D=[seq[r.at],seq[r.at+1],seq[r.at+2],seq[r.at+3]];
       const DS=[S[r.at],S[r.at+1],S[r.at+2],S[r.at+3]];
@@ -626,6 +637,36 @@ function poolRates(){
   POOL_BY_MODEL[SUIT_MODEL]=acc.map(v=>v/n);
   return POOL_BY_MODEL[SUIT_MODEL];
 }
+// ── serving expectations: tier-weighted over the production deck DB ──
+const tierWOf=()=>{
+  if(!Array.isArray(ST.tierW)||ST.tierW.length!==10)ST.tierW=[1,2,3,4,5,6,7,8,7,6];
+  return ST.tierW;
+};
+let SERV_SAMPLE=null,SERV_KEY='',SERV_RATES=null;
+function servSample(){
+  if(!SDECKS.length)return POOL_SAMPLE.length?POOL_SAMPLE:(poolRates(),POOL_SAMPLE);
+  const w=tierWOf(),key=w.join(',');
+  if(SERV_SAMPLE&&SERV_KEY===key)return SERV_SAMPLE;
+  const byTier={};SDECKS.forEach(d=>{(byTier[d.tier]=byTier[d.tier]||[]).push(d);});
+  const totalW=w.reduce((a,b)=>a+b,0)||1;
+  const N=240,out=[];
+  for(let t=0;t<10;t++){
+    const arr=byTier[t]||[];if(!arr.length||!w[t])continue;
+    const n=Math.max(1,Math.round(N*w[t]/totalW));
+    for(let i=0;i<n;i++)out.push(arr[Math.floor(i*arr.length/n)]);
+  }
+  SERV_SAMPLE=out;SERV_KEY=key;SERV_RATES=null;
+  return out;
+}
+function servRates(){
+  if(!SDECKS.length)return poolRates();
+  servSample();
+  if(SERV_RATES)return SERV_RATES;
+  const acc=new Array(29).fill(0);
+  for(const d of SERV_SAMPLE)deckRates(d,20).forEach((v,i)=>acc[i]+=v);
+  SERV_RATES=acc.map(v=>v/SERV_SAMPLE.length);
+  return SERV_RATES;
+}
 function poisAtLeast(lam,T){
   if(T<=0)return 1;if(lam<=0)return 0;
   let term=Math.exp(-lam),cdf=term;
@@ -660,9 +701,9 @@ function simDay(day,H,runs){
   const ids=(day.decks||[]).map(String);
   const K=ids.length||day.deckCount||3;
   H=H||Math.max(K,day.matches||0);runs=runs||300;   // matches beyond the fitted decks run on day-average rates
-  const key=JSON.stringify([ms.map(m=>m.type+':'+m.target),ids,K,H,runs,slots,SUIT_MODEL]);
+  const key=JSON.stringify([ms.map(m=>m.type+':'+m.target),ids,K,H,runs,slots,SUIT_MODEL,SDECKS.length?tierWOf().join(''):'']);
   if(SIMCACHE.has(key))return SIMCACHE.get(key);
-  const R=poolRates();
+  const R=servRates();
   const deckR=ids.map(id=>{const d=BYID.get(id);return d?deckRates(d,30):null;});
   const avg=ms.map(m=>{const rs=deckR.filter(Boolean).map(r=>r[MI[m.type]]);
     return rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:R[MI[m.type]];});
@@ -1642,7 +1683,7 @@ let SCHED_MODE='personal';
 // expected-progress timeline: 3 visible slots; a queued mission enters when one
 // completes; each mission's clock runs only while visible. Time unit = matches.
 function timelineForDay(day,mode,mpd){
-  const R=poolRates();
+  const R=servRates();
   const K=mode==='cal'?mpd
     :Math.max((day.decks||[]).length||day.deckCount||3,day.matches||0);
   const dayAvg={};
@@ -1809,7 +1850,7 @@ function bankEval(chain,M){
 }
 function genChain(M,pAll,used){
   used=used||new Map();
-  const R=poolRates();
+  const R=servRates();
   const slots=Math.max(1,ST.slots||3);
   // each mission gets a LANE SHARE of the day: 5 missions ride `slots` slots,
   // so a mission's realistic window is M·slots/5 (with a little slack)
@@ -1942,7 +1983,7 @@ function renderProgChase(){
 }
 const bankCaps=()=>({t:(ST.bankCaps&&ST.bankCaps.t)||99,k:(ST.bankCaps&&ST.bankCaps.k)||999});
 function sizeTarget(type,M){                 // auto target: same lane-window pacing the generator uses
-  const R=poolRates(),slots=Math.max(1,ST.slots||3);
+  const R=servRates(),slots=Math.max(1,ST.slots||3);
   const w=M*slots/5/1.1;
   const pAll=+document.getElementById('bankDiff').value||0.65;
   const p1=Math.min(0.97,Math.pow(pAll,1/5));
@@ -1954,7 +1995,7 @@ function sizeTargetDue(chain,j,due,M){
   // target so the mission's TYPICAL completion lands ON the due match (like
   // the Studio's due-deck): seed T = rate × window from its slot entry, then
   // nudge against the real fluid timeline until ✓ falls on `due`
-  const R=poolRates();
+  const R=servRates();
   const r=R[MI[chain.missions[j].type]];
   const caps=bankCaps().t;
   const orig=chain.missions[j].target;
@@ -2092,10 +2133,10 @@ function renderBank(){
   const M=Math.max(1,+document.getElementById('bankMpd').value||6);
   const bank=bankOf();
   // pool experience context — what a random-deck day feels like
-  const kps=POOL_SAMPLE.slice(0,60).map(d=>deckKPIs(d,30));
+  const kps=servSample().filter((_,i)=>i%4===0).map(d=>deckKPIs(d,30));
   const avgFun=Math.round(kps.reduce((a,k)=>a+funScore(k),0)/kps.length);
   const avgRtp=kps.reduce((a,k)=>a+k.rtp,0)/kps.length;
-  const R2=poolRates(),slots2=Math.max(1,ST.slots||3);
+  const R2=servRates(),slots2=Math.max(1,ST.slots||3);
   const w2=M*slots2/5/1.1,pAll2=+document.getElementById('bankDiff').value||0.65;
   const palette=M29.filter((m,i)=>R2[i]>0.02&&poisAtLeast(R2[i]*w2,1)>=pAll2/Math.pow(0.97,4)).length;
   document.getElementById('bankCtx').innerHTML=
@@ -2118,7 +2159,7 @@ function renderBank(){
       <div style="overflow-x:auto"><table><thead><tr><th>Mission</th><th>Target</th><th>Tok</th><th>Bonus $</th><th title="finish-by match — sets the target automatically">Due m</th><th>P</th></tr></thead><tbody>
       ${c.missions.map((m,j)=>`<tr>
         <td>${j<Math.max(1,ST.slots||3)?'<span class="tag open">open</span> ':'<span class="tag q">Q</span> '}<select data-bty="${ci}:${j}" title="swap the mission type — the target re-sizes automatically to the day's pacing" style="max-width:180px">${
-          M29.filter((mm,ii)=>poolRates()[ii]>0.02).map(mm=>`<option value="${mm[0]}"${mm[0]===m.type?' selected':''}>${mm[1]}</option>`).join('')}</select></td>
+          M29.filter((mm,ii)=>servRates()[ii]>0.02).map(mm=>`<option value="${mm[0]}"${mm[0]===m.type?' selected':''}>${mm[1]}</option>`).join('')}</select></td>
         <td><input type="number" min="1" value="${m.target}" data-bt="${ci}:${j}" style="width:52px"></td>
         <td><input type="number" min="1" value="${m.tokens}" data-btk="${ci}:${j}" style="width:52px"></td>
         <td><input type="number" min="0" step="0.05" value="${m.cash??''}" placeholder="—" data-bch="${ci}:${j}" style="width:60px"></td>
@@ -2214,6 +2255,19 @@ if(ST.bankCaps){capT.value=ST.bankCaps.t||'';capK.value=ST.bankCaps.k||'';}
 capT.onchange=()=>{ST.bankCaps=ST.bankCaps||{};ST.bankCaps.t=+capT.value>0?+capT.value:null;save();};
 capK.onchange=()=>{ST.bankCaps=ST.bankCaps||{};ST.bankCaps.k=+capK.value>0?+capK.value:null;save();};
 (function(){
+  const box=document.getElementById('tierWBox');
+  const draw=()=>{const w=tierWOf();
+    box.innerHTML=w.map((v,t)=>`<span style="display:inline-flex;flex-direction:column;align-items:center">
+      <input type="number" min="0" max="99" value="${v}" data-tw="${t}" style="width:40px">
+      <span class="lbl" style="font-size:8px">t${t}</span></span>`).join('');};
+  draw();
+  box.addEventListener('change',e2=>{
+    const t=e2.target;if(t.dataset.tw==null)return;
+    tierWOf()[+t.dataset.tw]=Math.max(0,+t.value||0);
+    SERV_SAMPLE=null;SERV_RATES=null;SIMCACHE.clear();
+    save();renderBank();});
+})();
+(function(){
   const e=ecoOf();
   const bind=(id,key,mul)=>{const el=document.getElementById(id);
     el.value=e[key];el.onchange=()=>{e[key]=+el.value||e[key];save();renderEcon();};};
@@ -2288,7 +2342,7 @@ document.getElementById('bankCards').addEventListener('change',e=>{
     const m=bank[i].missions[j];
     m.type=t.value;
     m.target=m.due?sizeTargetDue(bank[i],j,m.due,M2).t:sizeTarget(t.value,M2);
-    m.tokens=Math.min(bankCaps().k,tokDefault(poolRates()[MI[t.value]]));}
+    m.tokens=Math.min(bankCaps().k,tokDefault(servRates()[MI[t.value]]));}
   else if(d.bdm!=null){const[i,j]=d.bdm.split(':').map(Number);
     const M2=Math.max(1,+document.getElementById('bankMpd').value||6);
     const m=bank[i].missions[j];
