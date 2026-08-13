@@ -316,7 +316,7 @@ const SIM_KEYS = ['sim_win_pct','sim_win_std','sim_pw','sim_dw','sim_push','sim_
   'sim_p21','sim_d21','sim_pbust','sim_dbust','sim_book','sim_book_std',
   'sim_mix_book','sim_mix_std','sim_mix_bust','sim_500_book','sim_500_std','sim_500_bust',
   'm_dd','m_split','m_splitdbl','m_win3c','m_winsoft','m_winudog','m_windbust','m_winboth','m_matchwin'];
-const DECK_KEYS = ['deck_id','cards','optimal_final','tier','fun_raw','fun_pct','mean_std','skill_noise'];
+const DECK_KEYS = ['deck_id','cards','suits','optimal_final','tier','fun_raw','fun_pct','mean_std','skill_noise'];
 
 const t0 = Date.now();
 const rows = decks.map((d, i) => {
